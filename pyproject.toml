@@ -1,0 +1,37 @@
+[project]
+name = "aegis-code-repo-agent"
+version = "0.1.0"
+description = "AEGIS 2.0: a multi-agent code repository analysis system for 火山杯智能体大赛."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "AEGIS Team" }
+]
+keywords = ["agent", "multi-agent", "code-analysis", "repository", "aegis", "volcano-cup"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Es777777/aegis-code-repo-agent"
+Repository = "https://github.com/Es777777/aegis-code-repo-agent"
+Issues = "https://github.com/Es777777/aegis-code-repo-agent/issues"
+
+[project.scripts]
+aegis = "main:main"
+
+[tool.setuptools]
+packages = ["aegis", "aegis.agents", "aegis.knowledge", "aegis.orchestrator", "aegis.reporting"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

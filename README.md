@@ -1,0 +1,179 @@
+# AEGIS 2.0: Multi-Agent Code Repository Analyst
+
+AEGIS 是一个为 **火山杯智能体大赛** 准备的代码仓库阅读分析系统。它把一个软件仓库转化为可检索、可引用、可审查的结构化知识，再由多个专项 Agent 生成架构、接口、内部实现、数据状态、运行配置和风险报告。
+
+> Automated Exploration & Guided Intelligence for Software.
+
+![AEGIS architecture](docs/assets/aegis-architecture.png)
+
+## Highlights
+
+- **Repository Knowledge Layer**: Repo Map、符号表、依赖图、调用图、接口目录、Evidence Store。
+- **Multi-Agent Workflow**: Architecture、Interface、Internals、Data State、Build Runtime、Risk、Evidence Reviewer。
+- **Evidence-First Reports**: 每条重要结论尽量携带文件路径、行号、代码片段和置信度。
+- **Incremental Cache**: 文件 hash 未变时复用解析结果，适合重复分析和 Git Diff 场景。
+- **Optional LLM Agent**: 默认离线可用；配置 OpenAI 兼容文本接口后启用 LLM 综合分析。
+- **Readable Outputs**: Markdown、HTML、Mermaid、JSON 知识层和事件日志。
+
+## Quick Start
+
+```powershell
+python main.py examples\sample_repo
+```
+
+输出目录：
+
+```text
+output/aegis/sample_repo/
+  .cache/file_records.json
+  knowledge.json
+  findings.json
+  events.json
+  report.md
+  report.html
+  architecture.mmd
+```
+
+启动报告服务器：
+
+```powershell
+python main.py --serve output\aegis\sample_repo --port 8765
+```
+
+打开：
+
+```text
+http://127.0.0.1:8765/report.html
+```
+
+## Usage
+
+分析任意本地仓库：
+
+```powershell
+python main.py <repo-path>
+```
+
+限制扫描文件数：
+
+```powershell
+python main.py <repo-path> --max-files 2000
+```
+
+禁用缓存：
+
+```powershell
+python main.py <repo-path> --no-cache
+```
+
+启用可选 LLM Agent：
+
+```powershell
+python main.py <repo-path> --llm
+```
+
+## Environment Configuration
+
+AEGIS 启动时会自动读取当前目录 `.env`，也支持系统环境变量。优先级：
+
+```text
+CLI 参数 > 系统环境变量 / .env > 程序默认值
+```
+
+复制配置模板：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+最小配置：
+
+```env
+AEGIS_REPO_PATH=examples/sample_repo
+AEGIS_OUTPUT_DIR=output/aegis
+AEGIS_MAX_FILES=1500
+AEGIS_USE_CACHE=true
+```
+
+配置后可直接运行：
+
+```powershell
+python main.py
+```
+
+### Core Variables
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `AEGIS_REPO_PATH` | 要分析的仓库路径 | empty |
+| `AEGIS_OUTPUT_DIR` | 输出目录 | `output/aegis` |
+| `AEGIS_MAX_FILES` | 最大扫描文件数 | `1500` |
+| `AEGIS_USE_CACHE` | 是否启用文件解析缓存 | `true` |
+| `AEGIS_SERVE_DIR` | `--serve` 不传目录时使用的报告目录 | empty |
+| `AEGIS_SERVE_HOST` | 报告服务器 host | `127.0.0.1` |
+| `AEGIS_SERVE_PORT` | 报告服务器 port | `8765` |
+
+### LLM Variables
+
+默认不调用外部文本模型。若要启用 LLM Agent：
+
+```env
+AEGIS_LLM_ENABLED=true
+AEGIS_LLM_API_KEY=your-text-model-key
+AEGIS_LLM_BASE_URL=https://api.openai.com/v1
+AEGIS_LLM_MODEL=gpt-4o-mini
+AEGIS_LLM_TIMEOUT_SECONDS=120
+AEGIS_LLM_MAX_CONTEXT_CHARS=14000
+```
+
+LLM 只接收 Context Router 选出的最小必要上下文，输出仍会进入 Evidence Reviewer。
+
+## Architecture
+
+核心流程：
+
+```text
+Repo + User Goal
+  -> Repo Scanner
+  -> Repository Knowledge Layer
+  -> Orchestrator Workflow
+  -> Specialist Agents
+  -> Evidence Reviewer
+  -> Document Writer
+  -> Reports
+```
+
+更多说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+## Agents
+
+- `ArchitectureAnalyst`: 模块分层、Repo Map、依赖热点。
+- `InterfaceAnalyst`: HTTP/RPC/CLI 接口候选。
+- `InternalsAnalyst`: 核心实现、长文件热点。
+- `DataStateAnalyst`: 数据模型、缓存、队列、状态层候选。
+- `BuildRuntimeAnalyst`: 构建配置、入口文件、运行线索。
+- `RiskAnalyst`: 安全敏感实现和复杂度风险。
+- `LLMRepositoryAnalyst`: 可选文本模型综合分析。
+- `EvidenceReviewer`: 检查证据缺口和重复结论。
+
+## Development
+
+运行测试：
+
+```powershell
+python -m compileall aegis main.py tests
+python -m unittest discover -s tests -v
+```
+
+项目无强制第三方依赖，默认离线可运行。
+
+## Roadmap
+
+- 接入 Tree-sitter / LSP，提升符号图和调用图准确度。
+- 为 FastAPI、Express、Spring、Django 等框架补充专用接口解析器。
+- 将 Git Diff 变更文件映射到受影响模块，进一步缩小增量重算范围。
+- 增加 Web UI 的交互式追问与报告导航。
+
+## License
+
+MIT License. See [LICENSE](LICENSE).

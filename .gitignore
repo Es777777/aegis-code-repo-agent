@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+output/
+*.log
+架构设计草稿.jpg
