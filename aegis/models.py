@@ -41,6 +41,37 @@ class FileRecord:
 
 
 @dataclass
+class CodeGraphNode:
+    id: str
+    kind: str
+    name: str
+    path: str | None = None
+    line: int | None = None
+    language: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CodeGraphEdge:
+    source: str
+    target: str
+    kind: str
+    evidence: Evidence | None = None
+    confidence: float = 0.75
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CodeGraph:
+    nodes: list[CodeGraphNode]
+    edges: list[CodeGraphEdge]
+    entrypoints: list[str] = field(default_factory=list)
+    interfaces: list[str] = field(default_factory=list)
+    data_nodes: list[str] = field(default_factory=list)
+    stats: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class RepoKnowledge:
     root: str
     repo_name: str
@@ -52,6 +83,7 @@ class RepoKnowledge:
     repo_map: list[str]
     dependency_graph: dict[str, list[str]]
     call_graph: dict[str, list[str]]
+    code_graph: CodeGraph
     interface_catalog: dict[str, list[str]]
     evidence_store: list[Evidence]
     stats: dict[str, Any]

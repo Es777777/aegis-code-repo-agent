@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from aegis.config import AegisConfig, LLMConfig, load_env_file
+from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.server import serve
 
@@ -29,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--host", default=config.serve_host, help="报告服务器 host")
     parser.add_argument("--port", type=int, default=config.serve_port, help="报告服务器 port")
+    parser.add_argument("--trace-interface", help="分析后输出接口链路，例如 /users")
     return parser.parse_args()
 
 
@@ -56,6 +58,21 @@ def main() -> int:
     print(f"- mermaid: {result.output_dir / 'architecture.mmd'}")
     print(f"- knowledge: {result.output_dir / 'knowledge.json'}")
     print(f"- findings: {result.output_dir / 'findings.json'}")
+    if args.trace_interface:
+        query = CodeGraphQuery(result.knowledge.code_graph)
+        trace = query.trace_interface(args.trace_interface)
+        print(f"\nCodeGraph trace for {args.trace_interface}:")
+        if not trace:
+            print("- no matching interface found")
+        for node in trace:
+            location = (
+                f" ({node.path}:{node.line})"
+                if node.path and node.line
+                else f" ({node.path})"
+                if node.path
+                else ""
+            )
+            print(f"- {node.kind}: {node.name}{location}")
     return 0
 
 

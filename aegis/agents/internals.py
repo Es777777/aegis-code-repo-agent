@@ -23,9 +23,11 @@ class InternalsAnalyst(BaseAgent):
         findings = [
             self.finding(
                 "核心实现候选",
-                f"符号密度较高的文件可能承载主要实现逻辑：{preview}。",
+                f"符号密度较高的文件可能承载主要实现逻辑：{preview}。"
+                f"CodeGraph 当前记录 {knowledge.code_graph.stats.get('node_kinds', {}).get('function', 0)} 个函数节点、"
+                f"{knowledge.code_graph.stats.get('node_kinds', {}).get('class', 0)} 个类节点。",
                 evidence=evidence_from_records(symbol_rich),
-                tags=["internals", "symbols"],
+                tags=["internals", "symbols", "codegraph"],
             )
         ]
         long_files = [record for record in knowledge.files if record.lines >= 350]

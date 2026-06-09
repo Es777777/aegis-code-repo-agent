@@ -4,7 +4,7 @@
 
 1. 用户目标层：用户提供仓库路径、分析范围和输出偏好。
 2. 仓库采集层：`RepoScanner` 读取文件、Git Diff、配置和入口线索。
-3. 代码知识层：`KnowledgeBuilder` 生成 Repo Map、依赖图、调用图、接口目录和 Evidence Store。
+3. 代码知识层：`KnowledgeBuilder` 生成 Repo Map、CodeGraph、接口目录和 Evidence Store。
 4. 编排控制层：`AegisWorkflow` 管理事件日志、缓存、Agent 调度和报告生成。
 5. 专项分析层：多个 Analyst 基于共享知识层产生结论。
 6. 审查交付层：`EvidenceReviewer` 检查证据，`ReportWriter` 生成 Markdown、HTML 和 Mermaid。
@@ -15,6 +15,7 @@
 - `aegis/knowledge/scanner.py`：仓库扫描。
 - `aegis/knowledge/parsers.py`：语言启发式解析。
 - `aegis/knowledge/indexer.py`：知识层构建。
+- `aegis/knowledge/codegraph.py`：统一 CodeGraph 节点/边模型与查询接口。
 - `aegis/orchestrator/context.py`：Context Router。
 - `aegis/orchestrator/workflow.py`：主编排流程。
 - `aegis/agents/`：专项分析 Agent。
@@ -36,6 +37,44 @@
 `FileRecordCache` 将每个文件的 hash、imports、symbols、interfaces、calls 和 evidence 缓存在 `.cache/file_records.json`。下次分析时，hash 未变的文件直接复用解析结果。
 
 Git 仓库中，`Git Diff Scanner` 会记录 `git diff --name-only HEAD` 的变更文件。后续可以进一步把这些文件映射到受影响模块，只重跑相关 Agent。
+
+## CodeGraph
+
+CodeGraph 是 AEGIS 的核心知识图谱。它把仓库中的文件、模块、类、函数、接口、配置和数据模型统一成节点，把定义、导入、调用、接口暴露、路由绑定和配置关系统一成边。
+
+节点类型：
+
+- `file`
+- `module`
+- `class`
+- `function`
+- `interface`
+- `config`
+- `data_model`
+- `external_module`
+
+边类型：
+
+- `contains_file`
+- `defines`
+- `imports`
+- `calls`
+- `calls_file`
+- `exposes`
+- `routes_to`
+- `configured_by`
+- `defines_data`
+
+查询能力：
+
+- `trace_interface(route)`：从接口路由追踪到 handler、文件和后续依赖。
+- `impacted_by_files(paths)`：从 Git Diff 文件反查受影响节点。
+
+CLI 示例：
+
+```powershell
+python main.py examples\sample_repo --trace-interface /users
+```
 
 ## LLM 接入
 

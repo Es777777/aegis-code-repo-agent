@@ -51,9 +51,10 @@ class DataStateAnalyst(BaseAgent):
         return [
             self.finding(
                 "数据与状态层候选",
-                f"发现 {len(candidates)} 个数据/状态相关文件候选：{preview}。",
+                f"发现 {len(candidates)} 个数据/状态相关文件候选：{preview}。"
+                f"CodeGraph 中有 {len(knowledge.code_graph.data_nodes)} 个 data_model 节点。",
                 evidence=evidence_from_records(candidates[:6]),
-                tags=["data-state"],
+                tags=["data-state", "codegraph"],
             )
         ]
 

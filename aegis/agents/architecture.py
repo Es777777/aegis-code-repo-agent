@@ -21,9 +21,11 @@ class ArchitectureAnalyst(BaseAgent):
             self.finding(
                 "仓库主干结构",
                 f"仓库包含 {knowledge.stats.get('file_count', 0)} 个可分析文件，主要框架/技术线索：{frameworks}。"
-                f"高优先级文件集中在：{', '.join(knowledge.repo_map[:8]) or '暂无'}。",
+                f"高优先级文件集中在：{', '.join(knowledge.repo_map[:8]) or '暂无'}。"
+                f"CodeGraph 包含 {knowledge.code_graph.stats.get('node_count', 0)} 个节点、"
+                f"{knowledge.code_graph.stats.get('edge_count', 0)} 条边。",
                 evidence=evidence_from_records(important),
-                tags=["architecture", "repo-map"],
+                tags=["architecture", "repo-map", "codegraph"],
             )
         )
         if layers:

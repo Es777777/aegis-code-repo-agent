@@ -7,6 +7,7 @@ import subprocess
 from aegis.cache import FileRecordCache
 from aegis.models import Evidence, FileRecord, RepoKnowledge
 
+from .codegraph import CodeGraphBuilder
 from .scanner import RepoScanner
 
 
@@ -93,6 +94,14 @@ class KnowledgeBuilder:
         entrypoints = self._entrypoints(files)
         changed_files = self._changed_files()
         repo_map = self._repo_map(files)
+        code_graph = CodeGraphBuilder(
+            files,
+            dependency_graph=dependency_graph,
+            call_graph=call_graph,
+            entrypoints=entrypoints,
+            configs=configs,
+        ).build()
+        stats["code_graph"] = code_graph.stats
         return RepoKnowledge(
             root=str(self.root),
             repo_name=self.root.name,
@@ -104,6 +113,7 @@ class KnowledgeBuilder:
             repo_map=repo_map,
             dependency_graph=dependency_graph,
             call_graph=call_graph,
+            code_graph=code_graph,
             interface_catalog=interface_catalog,
             evidence_store=evidence,
             stats=stats,

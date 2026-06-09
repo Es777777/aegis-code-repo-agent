@@ -4,6 +4,7 @@ from collections import defaultdict
 import html
 from pathlib import Path
 
+from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.models import Finding, RepoKnowledge
 
 
@@ -63,6 +64,38 @@ class ReportWriter:
         lines.append("")
         lines.append("## Repository Knowledge Layer")
         lines.append("")
+        lines.append("### CodeGraph")
+        lines.append("")
+        cg_stats = knowledge.code_graph.stats
+        lines.append(f"- 节点数：{cg_stats.get('node_count', 0)}")
+        lines.append(f"- 边数：{cg_stats.get('edge_count', 0)}")
+        lines.append(f"- 节点类型：{self._dict_summary(cg_stats.get('node_kinds', {}))}")
+        lines.append(f"- 边类型：{self._dict_summary(cg_stats.get('edge_kinds', {}))}")
+        lines.append("")
+        query = CodeGraphQuery(knowledge.code_graph)
+        if knowledge.interface_catalog:
+            first_route = next(iter(next(iter(knowledge.interface_catalog.values()))), "")
+            route = first_route.split(maxsplit=1)[-1] if first_route else ""
+            trace = query.trace_interface(route) if route else []
+            if trace:
+                lines.append(f"接口链路示例 `{first_route}`：")
+                for node in trace[:12]:
+                    location = (
+                        f" `{node.path}:{node.line}`"
+                        if node.path and node.line
+                        else f" `{node.path}`"
+                        if node.path
+                        else ""
+                    )
+                    lines.append(f"- {node.kind}: {node.name}{location}")
+                lines.append("")
+        if knowledge.changed_files:
+            impacted = query.impacted_by_files(knowledge.changed_files)
+            if impacted:
+                lines.append("Git Diff 影响节点：")
+                for node in impacted[:20]:
+                    lines.append(f"- {node.kind}: {node.name}")
+                lines.append("")
         lines.append("### Repo Map")
         lines.append("")
         for item in knowledge.repo_map[:20]:
@@ -155,6 +188,12 @@ class ReportWriter:
         return ", ".join(f"{lang}({count})" for lang, count in list(languages.items())[:6])
 
     @staticmethod
+    def _dict_summary(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "无"
+        return ", ".join(f"{key}({count})" for key, count in list(value.items())[:10])
+
+    @staticmethod
     def _render_mermaid(knowledge: RepoKnowledge) -> str:
         def node_id(value: str) -> str:
             cleaned = "".join(ch if ch.isalnum() else "_" for ch in value)
@@ -172,6 +211,11 @@ class ReportWriter:
             "  A -.证据回写.-> K",
             "  R -.冲突返工.-> O",
         ]
+        nodes_by_id = {node.id: node for node in knowledge.code_graph.nodes}
+        for interface_id in knowledge.code_graph.interfaces[:6]:
+            node = nodes_by_id.get(interface_id)
+            if node:
+                lines.append(f'  K --> {node_id(node.id)}["{node.name}"]')
         for path in knowledge.repo_map[:8]:
             nid = node_id(path)
             lines.append(f'  K --> {nid}["{path}"]')

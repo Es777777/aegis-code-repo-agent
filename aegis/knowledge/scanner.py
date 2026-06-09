@@ -81,6 +81,10 @@ class RepoScanner:
     ) -> list[Evidence]:
         evidence: list[Evidence] = []
         targets = set(symbols[:5] + interfaces[:5])
+        for interface in interfaces[:5]:
+            parts = interface.split(maxsplit=1)
+            if len(parts) == 2:
+                targets.add(parts[1])
         for idx, line in enumerate(lines, start=1):
             stripped = line.strip()
             if not stripped:

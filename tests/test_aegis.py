@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from aegis.config import AegisConfig, load_env_file
+from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.orchestrator.workflow import AegisWorkflow
 
@@ -22,6 +23,22 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertEqual(knowledge.interface_catalog["app.py"], ["GET /health", "POST /users"])
         self.assertIn("services/user_service.py", knowledge.dependency_graph["app.py"])
         self.assertIn("repositories/user_repository.py", knowledge.dependency_graph["services/user_service.py"])
+        kinds = {node.kind for node in knowledge.code_graph.nodes}
+        self.assertIn("file", kinds)
+        self.assertIn("module", kinds)
+        self.assertIn("interface", kinds)
+        self.assertIn("data_model", kinds)
+        edge_kinds = {edge.kind for edge in knowledge.code_graph.edges}
+        self.assertIn("imports", edge_kinds)
+        self.assertIn("defines", edge_kinds)
+        self.assertIn("exposes", edge_kinds)
+
+    def test_codegraph_trace_interface(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        trace = CodeGraphQuery(knowledge.code_graph).trace_interface("/users")
+        names = [node.name for node in trace]
+        self.assertTrue(any("/users" in name for name in names))
+        self.assertIn("app.py", names)
 
 
 class WorkflowTest(unittest.TestCase):

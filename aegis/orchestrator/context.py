@@ -34,6 +34,11 @@ class ContextRouter:
         lines.append(f"Repo: {self.knowledge.repo_name}")
         lines.append(f"Frameworks: {', '.join(self.knowledge.frameworks) or 'unknown'}")
         lines.append(f"Entrypoints: {', '.join(self.knowledge.entrypoints[:10]) or 'unknown'}")
+        lines.append(
+            "CodeGraph: "
+            f"{self.knowledge.code_graph.stats.get('node_count', 0)} nodes, "
+            f"{self.knowledge.code_graph.stats.get('edge_count', 0)} edges"
+        )
         lines.append("")
         for path in paths:
             record = self.lookup.get(path)
