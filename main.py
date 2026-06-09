@@ -5,7 +5,10 @@ from pathlib import Path
 
 from aegis.config import AegisConfig, LLMConfig, load_env_file
 from aegis.knowledge.codegraph import CodeGraphQuery
+from aegis.llm import LLMClient
 from aegis.orchestrator.workflow import AegisWorkflow
+from aegis.rag.index import RAGIndexBuilder
+from aegis.rag.qa import RepositoryQAAgent
 from aegis.server import serve
 
 
@@ -31,6 +34,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=config.serve_host, help="报告服务器 host")
     parser.add_argument("--port", type=int, default=config.serve_port, help="报告服务器 port")
     parser.add_argument("--trace-interface", help="分析后输出接口链路，例如 /users")
+    parser.add_argument("--ask", help="分析后使用 RAG Agent 回答仓库问题")
+    parser.add_argument("--top-k", type=int, default=8, help="RAG 检索返回数量")
     return parser.parse_args()
 
 
@@ -58,6 +63,7 @@ def main() -> int:
     print(f"- mermaid: {result.output_dir / 'architecture.mmd'}")
     print(f"- knowledge: {result.output_dir / 'knowledge.json'}")
     print(f"- findings: {result.output_dir / 'findings.json'}")
+    print(f"- rag index: {result.output_dir / 'rag_index.json'}")
     if args.trace_interface:
         query = CodeGraphQuery(result.knowledge.code_graph)
         trace = query.trace_interface(args.trace_interface)
@@ -73,6 +79,17 @@ def main() -> int:
                 else ""
             )
             print(f"- {node.kind}: {node.name}{location}")
+    if args.ask:
+        llm_config = LLMConfig.from_env(enabled=args.llm)
+        rag_index = RAGIndexBuilder(result.knowledge).build()
+        qa = RepositoryQAAgent(
+            result.knowledge,
+            rag_index,
+            llm=LLMClient(llm_config) if llm_config.enabled else None,
+        )
+        answer = qa.answer(args.ask, top_k=args.top_k)
+        print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
+        print(answer.answer)
     return 0
 
 

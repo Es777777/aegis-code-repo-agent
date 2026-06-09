@@ -31,7 +31,14 @@ Issues = "https://github.com/Es777777/aegis-code-repo-agent/issues"
 aegis = "main:main"
 
 [tool.setuptools]
-packages = ["aegis", "aegis.agents", "aegis.knowledge", "aegis.orchestrator", "aegis.reporting"]
+packages = [
+  "aegis",
+  "aegis.agents",
+  "aegis.knowledge",
+  "aegis.orchestrator",
+  "aegis.rag",
+  "aegis.reporting",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

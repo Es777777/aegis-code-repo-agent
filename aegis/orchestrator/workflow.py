@@ -18,6 +18,7 @@ from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.llm import LLMClient
 from aegis.models import AnalysisResult, Finding
 from aegis.orchestrator.context import ContextRouter
+from aegis.rag.index import RAGIndexBuilder
 from aegis.reporting.writer import ReportWriter
 from aegis.utils import slugify, write_json
 
@@ -48,7 +49,10 @@ class AegisWorkflow:
             cache_dir=self.output_dir / ".cache",
             use_cache=self.use_cache,
         ).build()
+        rag_index = RAGIndexBuilder(knowledge).build()
+        knowledge.stats["rag"] = rag_index.stats
         write_json(self.output_dir / "knowledge.json", knowledge.to_dict())
+        write_json(self.output_dir / "rag_index.json", rag_index.to_dict())
         self._event("knowledge-built", f"扫描 {knowledge.stats.get('file_count')} 个文件")
 
         findings: list[Finding] = []

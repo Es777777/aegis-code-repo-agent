@@ -20,6 +20,9 @@
 - `aegis/orchestrator/workflow.py`：主编排流程。
 - `aegis/agents/`：专项分析 Agent。
 - `aegis/reporting/writer.py`：报告生成。
+- `aegis/rag/index.py`：RAG chunk 与索引构建。
+- `aegis/rag/retriever.py`：离线 BM25/关键词检索。
+- `aegis/rag/qa.py`：仓库问答 Agent。
 
 ## 输出契约
 
@@ -31,6 +34,7 @@
 - `report.md`：Markdown 报告。
 - `report.html`：可浏览报告。
 - `architecture.mmd`：Mermaid 架构图。
+- `rag_index.json`：面向 Agent 问答的检索索引。
 
 ## 增量分析
 
@@ -74,6 +78,30 @@ CLI 示例：
 
 ```powershell
 python main.py examples\sample_repo --trace-interface /users
+```
+
+## RAG
+
+RAG 层把 CodeGraph 与源码证据转换成 Agent 可读的检索块：
+
+- `repo_overview`
+- `file`
+- `class`
+- `function`
+- `interface`
+- `data_model`
+- `edge:*`
+
+问答流程：
+
+1. `RAGIndexBuilder` 从 `RepoKnowledge` 构建 `rag_index.json`。
+2. `RAGRetriever` 使用离线 BM25/关键词检索返回证据 chunk。
+3. `RepositoryQAAgent` 在无 LLM 时输出证据式回答；有 LLM 时把上下文交给模型生成自然语言回答。
+
+CLI 示例：
+
+```powershell
+python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？"
 ```
 
 ## LLM 接入

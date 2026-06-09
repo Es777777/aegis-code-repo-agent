@@ -10,6 +10,9 @@ from aegis.config import AegisConfig, load_env_file
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.orchestrator.workflow import AegisWorkflow
+from aegis.rag.index import RAGIndexBuilder
+from aegis.rag.qa import RepositoryQAAgent
+from aegis.rag.retriever import RAGRetriever
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +43,23 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertTrue(any("/users" in name for name in names))
         self.assertIn("app.py", names)
 
+    def test_rag_retrieves_repository_context(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        self.assertGreater(index.stats["chunk_count"], 0)
+        results = RAGRetriever(index).search("POST /users UserRepository", top_k=5)
+        titles = " ".join(result.chunk.title for result in results)
+        self.assertIn("users", titles.lower())
+        self.assertTrue(any("UserRepository" in result.chunk.text for result in results))
+
+    def test_qa_agent_offline_answer(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer("用户创建接口在哪里，数据写入哪里？")
+        self.assertFalse(answer.used_llm)
+        self.assertIn("离线 RAG", answer.answer)
+        self.assertTrue(answer.results)
+
 
 class WorkflowTest(unittest.TestCase):
     def test_workflow_writes_outputs_and_uses_cache(self) -> None:
@@ -50,9 +70,11 @@ class WorkflowTest(unittest.TestCase):
             self.assertTrue((first.output_dir / "report.md").exists())
             self.assertTrue((first.output_dir / "report.html").exists())
             self.assertTrue((first.output_dir / "architecture.mmd").exists())
+            self.assertTrue((first.output_dir / "rag_index.json").exists())
             self.assertGreater(second.knowledge.stats.get("cache_hits", 0), 0)
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
+            self.assertIn("rag", data["stats"])
 
 
 class EnvConfigTest(unittest.TestCase):

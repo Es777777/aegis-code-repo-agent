@@ -51,6 +51,9 @@ class ReportWriter:
         lines.append(f"- 框架线索：{', '.join(knowledge.frameworks) if knowledge.frameworks else '未识别'}")
         lines.append(f"- 入口候选：{', '.join(knowledge.entrypoints[:8]) if knowledge.entrypoints else '未识别'}")
         lines.append(f"- Git 变更文件：{len(knowledge.changed_files)}")
+        rag_stats = knowledge.stats.get("rag", {})
+        if isinstance(rag_stats, dict):
+            lines.append(f"- RAG Chunks：{rag_stats.get('chunk_count', 0)}")
         lines.append("")
         lines.append("## 主流程")
         lines.append("")
