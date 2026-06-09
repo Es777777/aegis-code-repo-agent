@@ -194,6 +194,24 @@ AEGIS 会从 `RepoKnowledge + CodeGraph + Evidence Store` 构建 `rag_index.json
 
 默认检索器是无外部依赖的 BM25/关键词检索，适合离线演示和比赛环境。配置 `AEGIS_LLM_*` 后，`RepositoryQAAgent` 会把检索上下文交给文本模型生成更自然的回答。
 
+## Codex Skill
+
+This repository also includes a Codex skill wrapper:
+
+```text
+skills/aegis-repo-analyst/
+```
+
+It teaches Codex how to run AEGIS analysis, CodeGraph tracing, and RAG question answering through:
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py analyze <repo-path>
+python skills\aegis-repo-analyst\scripts\run_aegis.py trace <repo-path> /users
+python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is user creation implemented?"
+```
+
+To install it into a local Codex skill directory, copy `skills/aegis-repo-analyst` into your `$CODEX_HOME/skills` or `~/.codex/skills`.
+
 ## Agents
 
 - `ArchitectureAnalyst`: 模块分层、Repo Map、依赖热点。

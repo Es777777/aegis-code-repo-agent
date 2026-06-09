@@ -1,0 +1,4 @@
+interface:
+  display_name: "AEGIS Repo Analyst"
+  short_description: "Analyze code repositories with AEGIS CodeGraph and RAG."
+  default_prompt: "Use AEGIS to analyze this repository and answer architecture questions with evidence."
