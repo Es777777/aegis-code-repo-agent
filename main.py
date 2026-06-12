@@ -30,6 +30,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("repo", nargs="?", default=config.repo_path, help="要分析的本地代码仓库路径")
     parser.add_argument("--out", default=config.output_dir, help="输出目录，默认 output/aegis")
     parser.add_argument("--max-files", type=int, default=config.max_files, help="最大扫描文件数")
+    parser.add_argument(
+        "--include",
+        action="append",
+        default=list(config.include or []),
+        help="只扫描匹配的 glob，可重复，例如 --include 'src/**/*.py'",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=list(config.exclude or []),
+        help="排除匹配的 glob，可重复，例如 --exclude '*_test.py'",
+    )
     parser.add_argument("--no-cache", action="store_true", default=not config.use_cache, help="禁用文件解析缓存")
     parser.add_argument("--llm", action="store_true", default=bool(config.llm and config.llm.enabled), help="启用可选 LLM 综合分析")
     parser.add_argument(
@@ -191,6 +203,8 @@ def main() -> int:
         repo,
         output_root=Path(args.out),
         max_files=args.max_files,
+        include=args.include,
+        exclude=args.exclude,
         use_cache=not args.no_cache,
         llm_config=LLMConfig.from_env(enabled=args.llm),
     )

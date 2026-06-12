@@ -39,6 +39,13 @@ def env_int(name: str, default: int) -> int:
         return default
 
 
+def env_list(name: str) -> list[str]:
+    value = os.getenv(name)
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 @dataclass
 class LLMConfig:
     enabled: bool = False
@@ -77,6 +84,8 @@ class AegisConfig:
     repo_path: str | None = None
     output_dir: str = "output/aegis"
     max_files: int = 1500
+    include: list[str] | None = None
+    exclude: list[str] | None = None
     use_cache: bool = True
     serve_dir: str | None = None
     serve_host: str = "127.0.0.1"
@@ -89,6 +98,8 @@ class AegisConfig:
             repo_path=os.getenv("AEGIS_REPO_PATH"),
             output_dir=os.getenv("AEGIS_OUTPUT_DIR", "output/aegis"),
             max_files=env_int("AEGIS_MAX_FILES", 1500),
+            include=env_list("AEGIS_INCLUDE"),
+            exclude=env_list("AEGIS_EXCLUDE"),
             use_cache=env_bool("AEGIS_USE_CACHE", True),
             serve_dir=os.getenv("AEGIS_SERVE_DIR"),
             serve_host=os.getenv("AEGIS_SERVE_HOST", "127.0.0.1"),

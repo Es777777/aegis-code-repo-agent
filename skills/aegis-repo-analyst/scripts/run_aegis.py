@@ -28,6 +28,8 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("repo")
     analyze.add_argument("--max-files", default="1500")
     analyze.add_argument("--out", default="output/aegis")
+    analyze.add_argument("--include", action="append", default=[])
+    analyze.add_argument("--exclude", action="append", default=[])
     analyze.add_argument("--no-cache", action="store_true")
     analyze.add_argument("--eval", action="store_true")
     analyze.add_argument("--eval-suite")
@@ -39,6 +41,8 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("question")
     ask.add_argument("--max-files", default="1500")
     ask.add_argument("--out", default="output/aegis")
+    ask.add_argument("--include", action="append", default=[])
+    ask.add_argument("--exclude", action="append", default=[])
     ask.add_argument("--top-k", default="8")
     ask.add_argument("--llm", action="store_true")
     ask.add_argument("--no-cache", action="store_true")
@@ -52,6 +56,8 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("route")
     trace.add_argument("--max-files", default="1500")
     trace.add_argument("--out", default="output/aegis")
+    trace.add_argument("--include", action="append", default=[])
+    trace.add_argument("--exclude", action="append", default=[])
     trace.add_argument("--no-cache", action="store_true")
     trace.add_argument("--eval", action="store_true")
     trace.add_argument("--eval-suite")
@@ -62,6 +68,8 @@ def parse_args() -> argparse.Namespace:
     eval_cmd.add_argument("repo")
     eval_cmd.add_argument("--max-files", default="1500")
     eval_cmd.add_argument("--out", default="output/aegis")
+    eval_cmd.add_argument("--include", action="append", default=[])
+    eval_cmd.add_argument("--exclude", action="append", default=[])
     eval_cmd.add_argument("--suite")
     eval_cmd.add_argument("--fail-under")
     eval_cmd.add_argument("--no-cache", action="store_true")
@@ -90,6 +98,10 @@ def main() -> int:
         return run(command, cwd=root)
 
     common = [args.repo, "--max-files", str(args.max_files), "--out", args.out]
+    for pattern in getattr(args, "include", []):
+        common.extend(["--include", pattern])
+    for pattern in getattr(args, "exclude", []):
+        common.extend(["--exclude", pattern])
     if getattr(args, "no_cache", False):
         common.append("--no-cache")
     if getattr(args, "eval", False):

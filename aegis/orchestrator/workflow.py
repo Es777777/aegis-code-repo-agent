@@ -30,11 +30,15 @@ class AegisWorkflow:
         *,
         output_root: Path = Path("output/aegis"),
         max_files: int = 1500,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
         use_cache: bool = True,
         llm_config: LLMConfig | None = None,
     ) -> None:
         self.repo = repo.resolve()
         self.max_files = max_files
+        self.include = include or []
+        self.exclude = exclude or []
         self.use_cache = use_cache
         self.llm_config = llm_config or LLMConfig.from_env(enabled=False)
         self.output_dir = output_root / slugify(self.repo.name)
@@ -46,6 +50,8 @@ class AegisWorkflow:
         knowledge = KnowledgeBuilder(
             self.repo,
             max_files=self.max_files,
+            include=self.include,
+            exclude=self.exclude,
             cache_dir=self.output_dir / ".cache",
             use_cache=self.use_cache,
         ).build()

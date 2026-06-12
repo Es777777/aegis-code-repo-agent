@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from fnmatch import fnmatch
 from pathlib import Path
 
 from aegis.models import Evidence, FileRecord
@@ -11,9 +12,18 @@ from .parsers import extract_calls, extract_imports, extract_interfaces, extract
 
 
 class RepoScanner:
-    def __init__(self, root: Path, *, max_files: int = 1500) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        max_files: int = 1500,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+    ) -> None:
         self.root = root.resolve()
         self.max_files = max_files
+        self.include = include or []
+        self.exclude = exclude or []
 
     def scan(self, cached_records: dict[str, FileRecord] | None = None) -> list[FileRecord]:
         cached_records = cached_records or {}
@@ -24,6 +34,8 @@ class RepoScanner:
             if not path.is_file() or is_ignored(path) or is_probably_binary(path):
                 continue
             relative = relpath(path, self.root)
+            if not self._matches_scope(relative):
+                continue
             try:
                 content_hash = file_sha256(path)
             except OSError:
@@ -61,6 +73,19 @@ class RepoScanner:
                 )
             )
         return files
+
+    def _matches_scope(self, relative_path: str) -> bool:
+        if self.include and not any(self._match(pattern, relative_path) for pattern in self.include):
+            return False
+        if self.exclude and any(self._match(pattern, relative_path) for pattern in self.exclude):
+            return False
+        return True
+
+    @staticmethod
+    def _match(pattern: str, relative_path: str) -> bool:
+        normalized = relative_path.replace("\\", "/")
+        candidate = pattern.replace("\\", "/")
+        return fnmatch(normalized, candidate) or fnmatch(Path(normalized).name, candidate)
 
     @staticmethod
     def stats(files: list[FileRecord]) -> dict[str, object]:

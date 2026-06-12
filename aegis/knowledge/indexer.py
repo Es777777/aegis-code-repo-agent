@@ -69,15 +69,24 @@ class KnowledgeBuilder:
         root: Path,
         *,
         max_files: int = 1500,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
         cache_dir: Path | None = None,
         use_cache: bool = True,
     ) -> None:
         self.root = root.resolve()
         self.max_files = max_files
+        self.include = include or []
+        self.exclude = exclude or []
         self.cache = FileRecordCache(cache_dir) if cache_dir and use_cache else None
 
     def build(self) -> RepoKnowledge:
-        scanner = RepoScanner(self.root, max_files=self.max_files)
+        scanner = RepoScanner(
+            self.root,
+            max_files=self.max_files,
+            include=self.include,
+            exclude=self.exclude,
+        )
         cached = self.cache.load() if self.cache else {}
         files = scanner.scan(cached)
         if self.cache:

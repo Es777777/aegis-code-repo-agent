@@ -65,6 +65,20 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertIn("离线 RAG", answer.answer)
         self.assertTrue(answer.results)
 
+    def test_include_exclude_scope_controls_scanned_files(self) -> None:
+        knowledge = KnowledgeBuilder(
+            SAMPLE,
+            max_files=100,
+            include=["*.py", "services/*.py"],
+            exclude=["app.py"],
+            use_cache=False,
+        ).build()
+        paths = {record.path for record in knowledge.files}
+        self.assertIn("services/user_service.py", paths)
+        self.assertIn("repositories/user_repository.py", paths)
+        self.assertNotIn("app.py", paths)
+        self.assertNotIn("pyproject.toml", paths)
+
 
 class WorkflowTest(unittest.TestCase):
     def test_workflow_writes_outputs_and_uses_cache(self) -> None:
@@ -203,6 +217,29 @@ class EnvConfigTest(unittest.TestCase):
                 self.assertEqual(config.repo_path, "examples/sample_repo")
                 self.assertEqual(config.max_files, 42)
                 self.assertFalse(config.use_cache)
+            finally:
+                for key, value in old_values.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
+    def test_scan_scope_from_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".env"
+            path.write_text(
+                "AEGIS_INCLUDE=*.py, services/*.py\n"
+                "AEGIS_EXCLUDE=app.py\n",
+                encoding="utf-8",
+            )
+            old_values = {key: os.environ.get(key) for key in ("AEGIS_INCLUDE", "AEGIS_EXCLUDE")}
+            try:
+                for key in old_values:
+                    os.environ.pop(key, None)
+                load_env_file(path)
+                config = AegisConfig.from_env()
+                self.assertEqual(config.include, ["*.py", "services/*.py"])
+                self.assertEqual(config.exclude, ["app.py"])
             finally:
                 for key, value in old_values.items():
                     if value is None:
@@ -354,6 +391,35 @@ class CLITest(unittest.TestCase):
             self.assertIn("trace", payload)
             names = [node["name"] for node in payload["trace"]["nodes"]]
             self.assertTrue(any("/users" in name for name in names))
+
+    def test_cli_include_exclude_scope_changes_scan_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--include",
+                    "*.py",
+                    "--exclude",
+                    "app.py",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["stats"]["file_count"], 2)
 
     def test_eval_json_output_is_machine_readable_and_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

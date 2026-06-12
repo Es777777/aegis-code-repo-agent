@@ -43,6 +43,7 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py doctor <repo-path> --json
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py analyze <repo-path> --max-files 1500
+python skills\aegis-repo-analyst\scripts\run_aegis.py analyze <repo-path> --include "src/**/*.py" --exclude "*_test.py"
 ```
 
 Outputs are written to:

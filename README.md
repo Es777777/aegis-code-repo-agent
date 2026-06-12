@@ -77,6 +77,12 @@ python main.py <repo-path>
 python main.py <repo-path> --max-files 2000
 ```
 
+控制扫描范围：
+
+```powershell
+python main.py <repo-path> --include "src/**/*.py" --include "*.toml" --exclude "*_test.py"
+```
+
 禁用缓存：
 
 ```powershell
@@ -142,6 +148,8 @@ Copy-Item .env.example .env
 AEGIS_REPO_PATH=examples/sample_repo
 AEGIS_OUTPUT_DIR=output/aegis
 AEGIS_MAX_FILES=1500
+AEGIS_INCLUDE=
+AEGIS_EXCLUDE=
 AEGIS_USE_CACHE=true
 ```
 
@@ -158,6 +166,8 @@ python main.py
 | `AEGIS_REPO_PATH` | 要分析的仓库路径 | empty |
 | `AEGIS_OUTPUT_DIR` | 输出目录 | `output/aegis` |
 | `AEGIS_MAX_FILES` | 最大扫描文件数 | `1500` |
+| `AEGIS_INCLUDE` | 逗号分隔 include glob；空值表示不过滤 | empty |
+| `AEGIS_EXCLUDE` | 逗号分隔 exclude glob | empty |
 | `AEGIS_USE_CACHE` | 是否启用文件解析缓存 | `true` |
 | `AEGIS_SERVE_DIR` | `--serve` 不传目录时使用的报告目录 | empty |
 | `AEGIS_SERVE_HOST` | 报告服务器 host | `127.0.0.1` |
