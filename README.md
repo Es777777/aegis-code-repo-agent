@@ -534,6 +534,8 @@ When a post-run command creates reusable artifacts, `manifest.run.post_run`
 records the command context: ask question, ready smoke question, `top_k`,
 `context_chars`, forced `context_files`, trace route, impact files, and
 evaluation/readiness thresholds.
+When the command uses `--from-output`, AEGIS preserves the original analysis
+configuration in `manifest.run` and updates only the `post_run` section.
 
 ```text
 output/aegis/<repo-name>/manifest.json

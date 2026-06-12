@@ -324,17 +324,46 @@ def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
 
 
 def refresh_manifest(result: Any, args: argparse.Namespace) -> None:
+    run_config = analysis_run_manifest(result, args)
     manifest = build_manifest(
         result,
-        max_files=args.max_files,
-        include=list(args.include or []),
-        exclude=list(args.exclude or []),
-        use_cache=not args.no_cache,
-        llm_enabled=bool(args.llm),
-        events_count=_events_count(result.output_dir),
+        max_files=run_config["max_files"],
+        include=run_config["include"],
+        exclude=run_config["exclude"],
+        use_cache=run_config["use_cache"],
+        llm_enabled=run_config["llm_enabled"],
+        events_count=run_config["events_count"],
         post_run=post_run_manifest(args),
     )
     write_json(result.output_dir / "manifest.json", manifest)
+
+
+def analysis_run_manifest(result: Any, args: argparse.Namespace) -> dict[str, Any]:
+    current = {
+        "max_files": args.max_files,
+        "include": list(args.include or []),
+        "exclude": list(args.exclude or []),
+        "use_cache": not args.no_cache,
+        "llm_enabled": bool(args.llm),
+        "events_count": _events_count(result.output_dir),
+    }
+    if not args.from_output:
+        return current
+    try:
+        raw = json.loads((result.output_dir / "manifest.json").read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return current
+    previous_run = raw.get("run", {}) if isinstance(raw, dict) else {}
+    if not isinstance(previous_run, dict):
+        return current
+    return {
+        "max_files": int(previous_run.get("max_files", current["max_files"])),
+        "include": list(previous_run.get("include", current["include"]) or []),
+        "exclude": list(previous_run.get("exclude", current["exclude"]) or []),
+        "use_cache": bool(previous_run.get("use_cache", current["use_cache"])),
+        "llm_enabled": bool(previous_run.get("llm_enabled", current["llm_enabled"])),
+        "events_count": int(previous_run.get("events_count", current["events_count"])),
+    }
 
 
 def post_run_manifest(args: argparse.Namespace) -> dict[str, Any]:

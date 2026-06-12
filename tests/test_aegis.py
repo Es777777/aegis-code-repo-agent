@@ -1318,6 +1318,13 @@ class CLITest(unittest.TestCase):
                 for line in result["source_excerpt"]
             )
             self.assertIn("class StandaloneEntrypoint", excerpts)
+            qa_artifact = json.loads((result.output_dir / "qa_answer.json").read_text(encoding="utf-8"))
+            manifest = json.loads((result.output_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["run"]["max_files"], 100)
+            self.assertFalse(manifest["run"]["use_cache"])
+            self.assertEqual(manifest["run"]["post_run"]["ask"], qa_artifact["question"])
+            self.assertEqual(manifest["run"]["post_run"]["top_k"], 2)
+            self.assertEqual(manifest["run"]["post_run"]["from_output"], str(result.output_dir))
 
     def test_from_output_missing_knowledge_has_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

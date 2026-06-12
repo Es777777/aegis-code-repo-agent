@@ -379,6 +379,9 @@ commands such as evaluation, impact analysis, or readiness checks. It records:
 - repository, CodeGraph, RAG, and finding statistics
 - artifact paths, existence, byte sizes, and SHA256 digests
 
+For `--from-output` post-run commands, AEGIS preserves the original analysis
+configuration in `run` and refreshes only `run.post_run` plus artifact hashes.
+
 Readiness treats the manifest as a required artifact and verifies that it
 matches the current repository analysis. It also verifies the recorded size and
 SHA256 for required artifacts, so stale or modified outputs fail the gate.
