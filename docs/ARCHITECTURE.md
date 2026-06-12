@@ -36,6 +36,17 @@
 - `architecture.mmd`：Mermaid 架构图。
 - `rag_index.json`：面向 Agent 问答的检索索引。
 
+## Doctor
+
+`--doctor` 是轻量预检入口，不执行完整仓库分析。它检查 Python 版本、仓库路径、输出目录写权限、Git 可用性和可选 LLM 配置状态，支持 JSON 输出和非零退出码。
+
+CLI 示例：
+
+```powershell
+python main.py examples\sample_repo --doctor
+python main.py examples\sample_repo --doctor --json
+```
+
 ## 增量分析
 
 `FileRecordCache` 将每个文件的 hash、imports、symbols、interfaces、calls 和 evidence 缓存在 `.cache/file_records.json`。下次分析时，hash 未变的文件直接复用解析结果。

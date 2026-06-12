@@ -34,6 +34,13 @@ python main.py <repo-path>
 
 ### Analyze A Repository
 
+Before analysis, use doctor when setup or environment health is uncertain:
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py doctor <repo-path>
+python skills\aegis-repo-analyst\scripts\run_aegis.py doctor <repo-path> --json
+```
+
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py analyze <repo-path> --max-files 1500
 ```

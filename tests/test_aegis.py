@@ -218,6 +218,76 @@ class PackagingTest(unittest.TestCase):
         self.assertIn("main", data["tool"]["setuptools"]["py-modules"])
 
 
+class DoctorTest(unittest.TestCase):
+    def test_doctor_json_passes_for_valid_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--doctor",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertTrue(payload["doctor"]["passed"])
+
+    def test_doctor_fails_without_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--out",
+                    tmp,
+                    "--doctor",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 2, completed.stdout)
+            payload = json.loads(completed.stdout)
+            self.assertFalse(payload["doctor"]["passed"])
+
+    def test_skill_wrapper_doctor_json_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
+                    "doctor",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertTrue(payload["doctor"]["passed"])
+
+
 class CLITest(unittest.TestCase):
     def test_ask_json_output_is_machine_readable_with_source_excerpt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

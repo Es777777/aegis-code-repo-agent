@@ -67,12 +67,28 @@ def parse_args() -> argparse.Namespace:
     eval_cmd.add_argument("--no-cache", action="store_true")
     eval_cmd.add_argument("--json", action="store_true")
 
+    doctor = sub.add_parser("doctor")
+    doctor.add_argument("repo", nargs="?")
+    doctor.add_argument("--out", default="output/aegis")
+    doctor.add_argument("--llm", action="store_true")
+    doctor.add_argument("--json", action="store_true")
+
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     root = find_project_root(Path(__file__).resolve())
+    if args.command == "doctor":
+        command = ["--doctor", "--out", args.out]
+        if args.repo:
+            command.insert(0, args.repo)
+        if args.llm:
+            command.append("--llm")
+        if args.json:
+            command.append("--json")
+        return run(command, cwd=root)
+
     common = [args.repo, "--max-files", str(args.max_files), "--out", args.out]
     if getattr(args, "no_cache", False):
         common.append("--no-cache")

@@ -34,6 +34,9 @@ jobs:
           python -m pip install -e .
           aegis --help
 
+      - name: Doctor smoke test
+        run: python main.py examples/sample_repo --doctor --json
+
       - name: Sample repo evaluation gate
         run: python main.py examples/sample_repo --max-files 100 --no-cache --eval --eval-fail-under 1.0 --json
 

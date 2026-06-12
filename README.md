@@ -30,6 +30,13 @@ python -m pip install -e .
 aegis examples\sample_repo
 ```
 
+先做本地环境自检：
+
+```powershell
+python main.py examples\sample_repo --doctor
+python main.py examples\sample_repo --doctor --json
+```
+
 输出目录：
 
 ```text

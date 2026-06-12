@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis.config import AegisConfig, LLMConfig, load_env_file
+from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
@@ -40,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--host", default=config.serve_host, help="报告服务器 host")
     parser.add_argument("--port", type=int, default=config.serve_port, help="报告服务器 port")
+    parser.add_argument("--doctor", action="store_true", help="检查本地环境、仓库路径、输出目录和可选 LLM 配置")
     parser.add_argument("--trace-interface", help="分析后输出接口链路，例如 /users")
     parser.add_argument("--ask", help="分析后使用 RAG Agent 回答仓库问题")
     parser.add_argument("--top-k", type=int, default=8, help="RAG 检索返回数量")
@@ -134,6 +136,17 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def print_doctor(payload: dict[str, Any]) -> None:
+    print("AEGIS doctor:")
+    for check in payload["checks"]:
+        print(f"- {check['status']}: {check['name']} - {check['message']}")
+    print(
+        "Result: "
+        f"{'passed' if payload['passed'] else 'failed'} "
+        f"({payload['errors']} errors, {payload['warnings']} warnings)"
+    )
+
+
 def metric_ratio(hits: int, total: int, rate: float) -> str:
     if total <= 0:
         return "n/a"
@@ -157,6 +170,18 @@ def main() -> int:
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
+    if args.doctor:
+        repo = Path(args.repo) if args.repo else None
+        payload = Doctor(
+            repo=repo,
+            output_root=Path(args.out),
+            llm_config=LLMConfig.from_env(enabled=args.llm),
+        ).run()
+        if args.json:
+            print_json({"doctor": payload})
+        else:
+            print_doctor(payload)
+        return 0 if payload["passed"] else 2
     if not args.repo:
         raise SystemExit("缺少仓库路径。用法：python main.py <repo-path> 或 python main.py --serve <report-dir>")
     repo = Path(args.repo)
