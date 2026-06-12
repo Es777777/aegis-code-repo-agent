@@ -17,6 +17,8 @@ Files:
 - `architecture.mmd`: Mermaid diagram.
 - `impact.json`: optional CodeGraph impact analysis output created by `--impact`.
 - `readiness.json`: optional readiness gate output created by `--ready`.
+- `qa_answer.json`: optional ask payload created by `--ask`.
+- `context_pack.md`: optional prompt-ready source context created by `--ask`.
 - `manifest.json`: analysis run manifest with version, config, stats, and artifact inventory.
 
 CodeGraph node kinds:

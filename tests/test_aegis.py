@@ -429,6 +429,16 @@ class CLITest(unittest.TestCase):
             self.assertIn("qa", payload)
             self.assertFalse(payload["qa"]["used_llm"])
             self.assertIn("context_pack", payload["qa"])
+            self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
+            self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
+            qa_artifact = json.loads(Path(payload["outputs"]["qa_answer"]).read_text(encoding="utf-8"))
+            self.assertEqual(qa_artifact["question"], "项目入口在哪里")
+            context_pack_artifact = Path(payload["outputs"]["context_pack"]).read_text(encoding="utf-8")
+            self.assertIn("AEGIS RAG CONTEXT PACK", context_pack_artifact)
+            self.assertIn("class StandaloneEntrypoint", context_pack_artifact)
+            manifest = json.loads(Path(payload["outputs"]["manifest"]).read_text(encoding="utf-8"))
+            self.assertTrue(manifest["artifacts"]["qa_answer.json"]["exists"])
+            self.assertTrue(manifest["artifacts"]["context_pack.md"]["exists"])
             context_blocks = payload["qa"]["context_pack"]["blocks"]
             self.assertTrue(context_blocks)
             self.assertTrue(any("class StandaloneEntrypoint" in block["content"] for block in context_blocks))
@@ -471,6 +481,9 @@ class CLITest(unittest.TestCase):
             self.assertIn("UserRepository", names)
             source_paths = payload["qa"]["context_pack"]["source_paths"]
             self.assertIn("repositories/user_repository.py", source_paths)
+            context_pack_artifact = Path(payload["outputs"]["context_pack"]).read_text(encoding="utf-8")
+            self.assertIn("## CodeGraph Context", context_pack_artifact)
+            self.assertIn("repositories/user_repository.py", context_pack_artifact)
 
     def test_trace_json_output_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -58,6 +58,8 @@ output/aegis/<repo-name>/
   report.html
   architecture.mmd
   manifest.json
+  qa_answer.json
+  context_pack.md
 ```
 
 Summarize the important output paths for the user.
@@ -89,6 +91,10 @@ when a question needs broader file context:
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 24000 --json
 ```
+
+Each ask also writes `qa_answer.json` and `context_pack.md` in the output
+directory. Prefer these files when another agent needs to reuse the exact answer
+payload or prompt-ready source context.
 
 Use `--json` when another tool, evaluator, or UI needs a stable payload with retrieved chunks, evidence, matched terms, and source excerpts:
 

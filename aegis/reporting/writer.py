@@ -19,6 +19,8 @@ class ReportWriter:
         "evaluation.json",
         "impact.json",
         "readiness.json",
+        "qa_answer.json",
+        "context_pack.md",
         "architecture.mmd",
     ]
 

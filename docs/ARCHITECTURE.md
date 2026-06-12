@@ -233,6 +233,15 @@ python main.py --from-output output\aegis\sample_repo --ask "Where is user creat
 The JSON response places this under `qa.context_pack`, so another agent can
 consume the code context directly.
 
+Ask commands also write reusable artifacts:
+
+- `qa_answer.json`: the stable QA payload, including `graph_context`,
+  `context_pack`, retrieval results, evidence, and excerpts.
+- `context_pack.md`: the prompt-ready CodeGraph and source context in a
+  human-readable format.
+
+Both artifacts are included in `manifest.json` after an ask run.
+
 ## Change Impact Analysis
 
 CodeGraph impact analysis starts from changed file nodes and walks reverse graph

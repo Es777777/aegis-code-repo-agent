@@ -50,6 +50,8 @@ output/aegis/sample_repo/
   architecture.mmd
   rag_index.json
   manifest.json
+  qa_answer.json        # created by --ask
+  context_pack.md       # created by --ask
 ```
 
 启动报告服务器：
@@ -366,6 +368,13 @@ Examples:
 ```powershell
 python main.py examples\sample_repo --ask "Where is user creation implemented?" --json
 python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json
+```
+
+`--ask` also writes reusable artifacts next to the report:
+
+```text
+output/aegis/<repo-name>/qa_answer.json
+output/aegis/<repo-name>/context_pack.md
 ```
 
 Configure the default budget with:

@@ -86,6 +86,8 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "impact": str(output_dir / "impact.json"),
         "readiness": str(output_dir / "readiness.json"),
         "manifest": str(output_dir / "manifest.json"),
+        "qa_answer": str(output_dir / "qa_answer.json"),
+        "context_pack": str(output_dir / "context_pack.md"),
     }
 
 
@@ -186,6 +188,52 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "context_pack": answer.context_pack.to_dict(),
         "results": [retrieval_payload(agent, item) for item in answer.results],
     }
+
+
+def write_qa_artifacts(output_dir: Path, qa_data: dict[str, Any], answer: QAAnswer) -> None:
+    write_json(output_dir / "qa_answer.json", qa_data)
+    (output_dir / "context_pack.md").write_text(render_qa_context_markdown(answer), encoding="utf-8")
+
+
+def render_qa_context_markdown(answer: QAAnswer) -> str:
+    lines = [
+        f"# AEGIS QA Context Pack",
+        "",
+        f"Question: {answer.question}",
+        "",
+    ]
+    if answer.graph_context:
+        lines.extend(
+            [
+                "## CodeGraph Context",
+                "",
+                f"Route: {answer.graph_context.get('route', '')}",
+                "",
+            ]
+        )
+        nodes = answer.graph_context.get("nodes") or []
+        if nodes:
+            for idx, node in enumerate(nodes, start=1):
+                location = ""
+                if node.get("path") and node.get("line"):
+                    location = f" ({node['path']}:{node['line']})"
+                elif node.get("path"):
+                    location = f" ({node['path']})"
+                lines.append(f"{idx}. `{node['kind']}` {node['name']}{location}")
+        else:
+            lines.append("No CodeGraph trace nodes were found.")
+        lines.append("")
+    lines.extend(
+        [
+            "## Source Context",
+            "",
+            "```text",
+            answer.context_pack.render(),
+            "```",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
@@ -333,6 +381,7 @@ def main() -> int:
             max_context_chars=args.context_chars,
         )
         payload["qa"] = qa_payload(qa, answer)
+        write_qa_artifacts(result.output_dir, payload["qa"], answer)
 
     should_eval = args.eval or args.eval_suite or args.eval_fail_under is not None or args.ready
     if should_eval:
@@ -357,7 +406,7 @@ def main() -> int:
         ).run()
         write_json(result.output_dir / "readiness.json", readiness)
         payload["readiness"] = readiness
-    if args.ready or should_eval or should_impact:
+    if args.ready or should_eval or should_impact or args.ask:
         refresh_manifest(result, args)
 
     if args.json:
