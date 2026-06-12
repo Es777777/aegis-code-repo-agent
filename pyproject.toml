@@ -1,7 +1,7 @@
 [project]
 name = "aegis-code-repo-agent"
 version = "0.1.0"
-description = "AEGIS 2.0: a multi-agent code repository analysis system for 火山杯智能体大赛."
+description = "AEGIS 2.0: a multi-agent code repository analysis system for the Volcano Cup intelligent agent competition."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -10,7 +10,7 @@ authors = [
 ]
 keywords = ["agent", "multi-agent", "code-analysis", "repository", "aegis", "volcano-cup"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",

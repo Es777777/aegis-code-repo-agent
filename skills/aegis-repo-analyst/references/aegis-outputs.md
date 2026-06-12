@@ -61,7 +61,9 @@ Ask JSON fields:
 
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
-- `qa.context_pack.blocks[*].content`: line-numbered source code blocks for the LLM.
+- `qa.context_pack.complete_file_paths`: files included as complete line-numbered source.
+- `qa.context_pack.blocks[*].content`: line-numbered source code for the LLM.
+- `qa.context_pack.blocks[*].complete_file`: `true` when the block contains the whole file.
 - `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.
 
 Impact JSON fields:

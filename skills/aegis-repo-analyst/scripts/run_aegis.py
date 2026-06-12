@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("--include", action="append", default=[])
     ask.add_argument("--exclude", action="append", default=[])
     ask.add_argument("--top-k", default="8")
-    ask.add_argument("--context-chars", default="16000")
+    ask.add_argument("--context-chars", default="48000")
     ask.add_argument("--llm", action="store_true")
     ask.add_argument("--no-cache", action="store_true")
     ask.add_argument("--eval", action="store_true")

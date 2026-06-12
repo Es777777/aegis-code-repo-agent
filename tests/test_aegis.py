@@ -9,6 +9,7 @@ import unittest
 import os
 from pathlib import Path
 
+import aegis
 from aegis.artifacts import load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, load_env_file
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
@@ -394,6 +395,24 @@ class PackagingTest(unittest.TestCase):
         data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(data["project"]["scripts"]["aegis"], "main:main")
         self.assertIn("main", data["tool"]["setuptools"]["py-modules"])
+
+    def test_package_metadata_is_release_ready(self) -> None:
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = data["project"]
+        self.assertEqual(project["version"], aegis.__version__)
+        self.assertIn("AEGIS 2.0", project["description"])
+        self.assertIn("Volcano Cup", project["description"])
+        self.assertNotIn("MVP", aegis.__doc__ or "")
+        self.assertIn("Development Status :: 4 - Beta", project["classifiers"])
+        mojibake_markers = ["鐏", "鏉", "櫤", "鑳", "\ufffd"]
+        for marker in mojibake_markers:
+            self.assertNotIn(marker, project["description"])
+
+    def test_skill_wrapper_defaults_match_runtime_context_budget(self) -> None:
+        script = (ROOT / "skills" / "aegis-repo-analyst" / "scripts" / "run_aegis.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('ask.add_argument("--context-chars", default="48000")', script)
 
 
 class DoctorTest(unittest.TestCase):

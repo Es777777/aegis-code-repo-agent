@@ -83,13 +83,15 @@ The answer is evidence-first. If no LLM is configured, it returns retrieved chun
 RAG answers also include a prompt-ready `context_pack`. Downstream agents should
 first inspect `qa.graph_context` and `qa.context_pack.source_paths`, then read
 `qa.context_pack.blocks[*].content` because it contains real line-numbered source
-file chunks, not just summaries. For route questions, AEGIS uses CodeGraph trace
-paths as required RAG context so downstream service/repository files are placed
-into the prompt when budget allows. Increase the budget with `--context-chars`
-when a question needs broader file context:
+files or focused source windows, not just summaries. Prefer blocks where
+`complete_file=true`; `qa.context_pack.complete_file_paths` lists every whole
+file packed into the prompt context. For route questions, AEGIS uses CodeGraph
+trace paths as required RAG context so downstream service/repository files are
+placed into the prompt when budget allows. Increase the budget with
+`--context-chars` when a question needs broader file context:
 
 ```powershell
-python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 24000 --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 48000 --json
 ```
 
 Each ask also writes `qa_answer.json` and `context_pack.md` in the output
