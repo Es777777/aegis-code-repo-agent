@@ -20,6 +20,7 @@ from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.agents.llm_agent import LLMRepositoryAnalyst
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
+from aegis.knowledge.parsers import extract_interfaces
 from aegis.llm import LLMClient, LLMError
 from aegis.orchestrator.context import ContextRouter
 from aegis.orchestrator.workflow import AegisWorkflow
@@ -129,6 +130,70 @@ class KnowledgeBuilderTest(unittest.TestCase):
             self.assertEqual(knowledge.stats["file_count"], 2)
             scan_stats = knowledge.stats["scan"]
             self.assertEqual(scan_stats["skipped"].get("max_files"), 3)
+
+    def test_web_interface_parsers_cover_common_frameworks(self) -> None:
+        fastapi = """
+from fastapi import APIRouter
+router = APIRouter(prefix="/api")
+@router.post("/users")
+def create_user(): pass
+"""
+        express = """
+const router = express.Router()
+router.get('/users', listUsers)
+app.use('/api', router)
+"""
+        nest = """
+@Controller('users')
+export class UserController {
+  @Get(':id')
+  findOne() {}
+}
+"""
+        spring = """
+@RestController
+@RequestMapping("/api")
+class UserController {
+  @PostMapping("/users")
+  createUser() {}
+}
+"""
+        go_gin = 'router.GET("/health", healthHandler)'
+        aspnet = '[HttpDelete("users/{id}")]'
+        laravel = "Route::patch('/users/{id}', [UserController::class, 'update']);"
+        self.assertIn("POST /api/users", extract_interfaces(fastapi, "Python"))
+        self.assertIn("GET /api/users", extract_interfaces(express, "JavaScript"))
+        self.assertIn("GET /users/:id", extract_interfaces(nest, "TypeScript"))
+        self.assertIn("POST /api/users", extract_interfaces(spring, "Java"))
+        self.assertIn("GET /health", extract_interfaces(go_gin, "Go"))
+        self.assertIn("DELETE /users/{id}", extract_interfaces(aspnet, "C#"))
+        self.assertIn("PATCH /users/{id}", extract_interfaces(laravel, "PHP"))
+
+    def test_codegraph_traces_express_prefixed_router_interface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "server.js").write_text(
+                "\n".join(
+                    [
+                        "const express = require('express')",
+                        "const app = express()",
+                        "const router = express.Router()",
+                        "function listUsers(req, res) {",
+                        "  return res.json([])",
+                        "}",
+                        "router.get('/users', listUsers)",
+                        "app.use('/api', router)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            knowledge = KnowledgeBuilder(root, max_files=20, use_cache=False).build()
+
+        self.assertEqual(knowledge.interface_catalog["server.js"], ["GET /api/users"])
+        trace = CodeGraphQuery(knowledge.code_graph).trace_interface("/api/users")
+        self.assertTrue(trace)
+        self.assertEqual(trace[0].metadata["route"], "/api/users")
+        self.assertEqual(trace[0].metadata["method"], "GET")
 
 
 class WorkflowTest(unittest.TestCase):

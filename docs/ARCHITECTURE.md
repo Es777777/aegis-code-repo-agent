@@ -97,6 +97,10 @@ CodeGraph 是 AEGIS 的核心知识图谱。它把仓库中的文件、模块、
 - `trace_interface(route)`：从接口路由追踪到 handler、文件和后续依赖。
 - `impacted_by_files(paths)`：从 Git Diff 文件反查受影响节点。
 
+接口节点来自轻量静态解析器，覆盖 FastAPI / Flask-style decorators、
+Express `app/router`、NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style
+`.GET/.POST`、ASP.NET `Http*` attribute 和 Laravel `Route::*` 等常见形态。
+
 CLI 示例：
 
 ```powershell

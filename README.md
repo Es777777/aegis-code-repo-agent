@@ -247,6 +247,10 @@ AEGIS 会从 `RepoKnowledge + CodeGraph + Evidence Store` 构建 `rag_index.json
 - 数据模型 chunk
 - 关键 CodeGraph 边 chunk
 
+接口识别覆盖常见轻量后端形态：FastAPI / Flask-style decorators、Express
+`app/router`、NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style
+`.GET/.POST`、ASP.NET `Http*` attribute 和 Laravel `Route::*`。
+
 默认检索器是无外部依赖的 BM25/关键词检索，适合离线演示和比赛环境。它会对 `CamelCase`、`snake_case`、路径片段和中英文架构词做展开，例如“入口/布线/布局/硬宏/Vivado/RTL/DFX”等问题可以命中真实代码文件。
 
 检索结果会自动补齐 CodeGraph 邻居和同文件源码上下文。配置 `AEGIS_LLM_*` 后，`RepositoryQAAgent` 会把带 `Code:`、文件路径和行号的上下文交给文本模型；离线模式也会直接打印源码节选，避免只返回文件名或符号摘要。

@@ -127,6 +127,9 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py trace /users --from-output
 ```
 
 This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file -> downstream imports/calls/data nodes.
+Interface extraction covers common FastAPI/Flask-style decorators, Express
+routers, NestJS controllers, Spring mappings, Gin/chi-style method routes,
+ASP.NET `Http*` attributes, and Laravel `Route::*` declarations.
 
 ### Analyze Change Impact
 
