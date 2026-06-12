@@ -89,8 +89,10 @@ source files or focused source windows, not just summaries. Prefer blocks where
 `complete_file=true`; `qa.context_pack.complete_file_paths` lists every whole
 file packed into the prompt context. For route questions and explicit file
 mentions, AEGIS uses required RAG context so downstream service/repository files
-are placed into the prompt when budget allows. Ordinary retrieval-selected files
-are listed in `qa.context_pack.target_context_paths` and must also appear in
+are placed into the prompt when budget allows. If the question names a unique
+class/function/data symbol, AEGIS also treats the defining file as required
+context. Ordinary retrieval-selected files are listed in
+`qa.context_pack.target_context_paths` and must also appear in
 `qa.context_pack.complete_file_paths` before an LLM answer is safe. If
 `qa.missing_required_context_paths`, `qa.incomplete_required_context_paths`,
 `qa.missing_target_context_paths`, or `qa.incomplete_target_context_paths` is

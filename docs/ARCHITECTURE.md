@@ -261,6 +261,9 @@ plain keyword score would not rank them high enough.
 The QA agent also treats explicit file mentions as required context. A question
 that names a real path, unique file name, or unique file stem forces that file
 into the context pack before ordinary retrieval candidates are considered.
+Unique CodeGraph symbol names in the question also become required context when
+they resolve to exactly one source file, which lets class/function questions read
+the defining file even when no path is mentioned.
 Operators can also pass `--context-file <path>` with `--ask` or `--ready-ask`.
 These files bypass ranking and become required context, which is useful when an
 external agent already knows the file that must be read. If a forced file cannot

@@ -13,6 +13,21 @@ from aegis.rag.retriever import RAGContextPack, RAGRetriever, RetrievalResult
 
 
 ROUTE_RE = re.compile(r"(/[A-Za-z0-9_./{}<>\-:]+)")
+COMMON_SYMBOL_NAMES = {
+    "__init__",
+    "main",
+    "run",
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "create",
+    "save",
+    "load",
+    "update",
+    "list",
+}
 
 
 @dataclass
@@ -285,6 +300,7 @@ class RepositoryQAAgent:
                     *self._forced_source_paths(forced_paths or []),
                     *self._graph_source_paths(graph_context),
                     *self._explicit_source_paths(question),
+                    *self._explicit_symbol_paths(question),
                 ]
             )
         )
@@ -342,6 +358,41 @@ class RepositoryQAAgent:
             else:
                 normalized_paths.append(lower_to_path.get(normalized.lower(), normalized))
         return list(dict.fromkeys(normalized_paths))
+
+    def _explicit_symbol_paths(self, question: str) -> list[str]:
+        question_lower = question.lower()
+        question_compact = self._identifier_compact(question)
+        symbol_paths: dict[str, set[str]] = {}
+        symbol_names: dict[str, str] = {}
+        for node in self.knowledge.code_graph.nodes:
+            if node.kind not in {"class", "function", "data_model"} or not node.path:
+                continue
+            name = node.name.strip()
+            normalized = name.lower()
+            if (
+                len(normalized) < 4
+                or normalized in COMMON_SYMBOL_NAMES
+                or normalized.startswith("__")
+            ):
+                continue
+            key = self._identifier_compact(name)
+            if not key:
+                continue
+            symbol_paths.setdefault(key, set()).add(node.path)
+            symbol_names[key] = normalized
+
+        paths: list[str] = []
+        for key, node_paths in symbol_paths.items():
+            if len(node_paths) != 1:
+                continue
+            symbol_name = symbol_names[key]
+            if symbol_name in question_lower or key in question_compact:
+                paths.extend(sorted(node_paths))
+        return list(dict.fromkeys(paths))
+
+    @staticmethod
+    def _identifier_compact(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", value.lower())
 
     @staticmethod
     def _llm_system_prompt() -> str:

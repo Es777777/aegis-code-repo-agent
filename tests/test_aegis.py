@@ -488,6 +488,20 @@ class RAGRecallTest(unittest.TestCase):
         self.assertEqual(answer.context_pack.incomplete_required_context_paths(), [])
         self.assertIn("class TimingModel", answer.llm_user_prompt)
 
+    def test_qa_agent_forces_unique_symbol_mentions_into_prompt_context(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer(
+            "Explain TimingModel behavior",
+            top_k=1,
+            max_context_chars=12000,
+        )
+        self.assertIn("src/timing/timing_model.py", answer.required_context_paths)
+        self.assertIn("src/timing/timing_model.py", answer.context_pack.complete_file_paths())
+        self.assertEqual(answer.context_pack.missing_required_context_paths(), [])
+        self.assertEqual(answer.context_pack.incomplete_required_context_paths(), [])
+        self.assertIn("class TimingModel", answer.llm_user_prompt)
+
     def test_required_context_contract_reports_missing_files(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()

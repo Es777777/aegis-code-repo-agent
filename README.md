@@ -432,6 +432,9 @@ AEGIS also treats that file as required context and attempts to pack it as a
 complete line-numbered source file. `llm_prompt.md` records the full prompt that
 would be sent to an OpenAI-compatible chat model, so demos and downstream agents
 can verify exactly which files entered the LLM context.
+Unique symbol names in the question, such as class or function names, are also
+promoted to required context so the defining file is read as source instead of
+only retrieved as metadata.
 When automatic retrieval is not enough, pass `--context-file <path>` one or more
 times with `--ask` or `--ready-ask`. Each specified file becomes required
 context and must appear in `complete_file_paths`; otherwise the prompt is marked
