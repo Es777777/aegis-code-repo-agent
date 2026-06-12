@@ -203,18 +203,22 @@ python main.py <repo> --eval --eval-fail-under 0.9
 ## RAG Context Pack
 
 The RAG layer exposes a prompt-ready context pack for agents. Retrieval still
-uses repository, file, symbol, interface, data, and CodeGraph chunks, but the
-final package prefers real `source` chunks so the downstream LLM sees file
-content, not only summaries.
+uses repository, file, symbol, interface, data, and CodeGraph chunks to decide
+what matters, but the final package is file-first: it puts complete
+line-numbered source files into context when the budget allows, then falls back
+to focused source windows only for large files.
 
 Context pack fields:
 
 - `query`
 - `max_chars` and `used_chars`
 - `source_paths`, the real source files included in the prompt context
+- `complete_file_paths`, files included as complete source files
 - `blocks[*].path`
 - `blocks[*].start_line` / `end_line`
 - `blocks[*].content` with line-numbered source
+- `blocks[*].context_mode`, usually `full_file` or `partial_file`
+- `blocks[*].complete_file`, `true` when the whole file is in context
 - `blocks[*].retrieved_from` to show which semantic chunk led to the source
 
 For route questions, `RepositoryQAAgent` also emits `qa.graph_context` from
@@ -224,7 +228,8 @@ config files can be included in `qa.context_pack.source_paths` even when the
 plain keyword score would not rank them high enough.
 
 CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
-uses `AEGIS_RAG_CONTEXT_CHARS`.
+uses `AEGIS_RAG_CONTEXT_CHARS` and defaults to `48000` so agent prompts can
+carry real files instead of only short snippets.
 
 ```powershell
 python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json

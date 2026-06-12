@@ -55,8 +55,9 @@ class RepositoryQAAgent:
         if self.llm and self.llm.available:
             system = (
                 "You are the AEGIS repository QA agent. Answer only from the provided "
-                "context pack. The context pack contains real source file blocks with "
-                "line numbers. If Graph Context is present, use it to explain route "
+                "context pack. The context pack contains real line-numbered source "
+                "files when complete_file=true, and focused source windows otherwise. "
+                "If Graph Context is present, use it to explain route "
                 "and call-chain structure, then verify with source blocks. If the "
                 "source evidence is insufficient, say so. Cite file paths and line ranges."
             )

@@ -357,9 +357,11 @@ MIT License. See [LICENSE](LICENSE).
 retrieval summaries. Each context block contains:
 
 - `source_paths`: the real files included in the prompt context
+- `complete_file_paths`: files that were packed as complete line-numbered source files
 - `graph_context`: route and call-chain nodes when the question references an interface route
 - `path`, `start_line`, `end_line`
-- the full retrieved source chunk content with line numbers and nearby same-file chunks when budget allows
+- `blocks[*].content`: real line-numbered code, preferably a whole file; large files fall back to focused source windows
+- `blocks[*].complete_file`: `true` when the block contains the entire file
 - the original retrieved chunk id and matched terms
 - a configurable character budget
 
@@ -380,14 +382,15 @@ output/aegis/<repo-name>/context_pack.md
 Configure the default budget with:
 
 ```env
-AEGIS_RAG_CONTEXT_CHARS=16000
+AEGIS_RAG_CONTEXT_CHARS=48000
 ```
 
 Downstream agents should inspect `qa.graph_context` and
-`qa.context_pack.source_paths`, then consume `qa.context_pack.blocks[*].content`
-directly when constructing LLM prompts. For route questions, AEGIS uses
-CodeGraph trace nodes as required context paths, so downstream files in the
-call chain are placed into the prompt context when budget allows.
+`qa.context_pack.source_paths`, then put `qa.context_pack.blocks[*].content`
+directly into the LLM prompt. Prefer blocks where `complete_file=true`; those
+are full source files, not summaries or isolated snippets. For route questions,
+AEGIS uses CodeGraph trace nodes as required context paths, so downstream files
+in the call chain are placed into the prompt context when budget allows.
 
 ## Change Impact Analysis
 

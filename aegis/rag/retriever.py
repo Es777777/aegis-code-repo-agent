@@ -66,6 +66,8 @@ class RAGContextBlock:
     matched_terms: list[str]
     retrieved_from: str
     content: str
+    context_mode: str = "source_chunk"
+    complete_file: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +81,8 @@ class RAGContextBlock:
             "score": self.score,
             "matched_terms": self.matched_terms,
             "retrieved_from": self.retrieved_from,
+            "context_mode": self.context_mode,
+            "complete_file": self.complete_file,
             "content": self.content,
         }
 
@@ -98,6 +102,7 @@ class RAGContextPack:
             f"Query: {self.query}",
             f"Budget: {self.used_chars}/{self.max_chars} chars",
             f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
+            f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
             "Instruction: answer only from the real source files and line ranges below; cite paths and lines.",
             "",
         ]
@@ -110,7 +115,11 @@ class RAGContextPack:
             lines.extend(
                 [
                     f"[{block.rank}] {block.chunk_kind} {location} score={block.score:.2f}",
-                    f"kind={block.chunk_kind} path={block.path or ''} line={block.start_line or ''}",
+                    (
+                        f"kind={block.chunk_kind} mode={block.context_mode} "
+                        f"complete_file={str(block.complete_file).lower()} "
+                        f"path={block.path or ''} line={block.start_line or ''}"
+                    ),
                     f"title: {block.title}",
                     f"retrieved_from: {block.retrieved_from}",
                     f"matched_terms: {', '.join(block.matched_terms) or 'none'}",
@@ -130,6 +139,7 @@ class RAGContextPack:
             "used_chars": self.used_chars,
             "dropped_blocks": self.dropped_blocks,
             "source_paths": self.source_paths(),
+            "complete_file_paths": self.complete_file_paths(),
             "blocks": [block.to_dict() for block in self.blocks],
         }
 
@@ -139,6 +149,15 @@ class RAGContextPack:
                 block.path
                 for block in self.blocks
                 if block.chunk_kind == "source" and block.path
+            )
+        )
+
+    def complete_file_paths(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                block.path
+                for block in self.blocks
+                if block.chunk_kind == "source" and block.path and block.complete_file
             )
         )
 
@@ -210,25 +229,35 @@ class RAGRetriever:
             max_chunks=max(top_k * 4, top_k + 6),
         )
         if required_paths:
-            context_results.extend(self._required_path_results(required_paths))
+            context_results = self._required_path_results(required_paths) + context_results
         blocks: list[RAGContextBlock] = []
         seen: set[str] = set()
         used_chars = 0
         dropped = 0
-        for result in context_results:
-            block_chunk = self._context_chunk(result.chunk)
+
+        def add_block(
+            result: RetrievalResult,
+            block_chunk: RAGChunk,
+            *,
+            context_mode: str,
+            complete_file: bool,
+            allow_truncate: bool,
+        ) -> bool:
+            nonlocal used_chars, dropped
             if block_chunk.id in seen:
-                continue
-            seen.add(block_chunk.id)
+                return True
             start_line = self._line_value(block_chunk.metadata.get("start_line"), block_chunk.line)
             end_line = self._line_value(block_chunk.metadata.get("end_line"), start_line)
             header_chars = 260
             remaining = max_chars - used_chars - header_chars
             if remaining < 200:
                 dropped += 1
-                continue
+                return False
             content = block_chunk.text
             if len(content) > remaining:
+                if not allow_truncate:
+                    dropped += 1
+                    return False
                 content = content[: max(0, remaining - 40)].rstrip() + "\n...[truncated by context budget]"
             retrieved_from = result.retrieved_from or (
                 result.chunk.id
@@ -247,9 +276,55 @@ class RAGRetriever:
                 matched_terms=result.matched_terms,
                 retrieved_from=retrieved_from,
                 content=content,
+                context_mode=context_mode,
+                complete_file=complete_file,
             )
             blocks.append(block)
+            seen.add(block_chunk.id)
             used_chars += len(block.content) + header_chars
+            return True
+
+        path_groups: dict[str, list[RetrievalResult]] = {}
+        path_order: list[str] = []
+        fallback_results: list[RetrievalResult] = []
+        for result in context_results:
+            focus = result.chunk if result.chunk.kind == "source" else self.source_companion(result.chunk)
+            if focus and focus.path and focus.path in self.source_chunks_by_path:
+                if focus.path not in path_groups:
+                    path_order.append(focus.path)
+                path_groups.setdefault(focus.path, []).append(result)
+            else:
+                fallback_results.append(result)
+
+        for path in path_order:
+            group = path_groups[path]
+            representative = group[0]
+            full_file = self._full_source_file_chunk(path)
+            if full_file and add_block(
+                representative,
+                full_file,
+                context_mode="full_file",
+                complete_file=bool(full_file.metadata.get("complete_file")),
+                allow_truncate=False,
+            ):
+                continue
+            for result in group:
+                add_block(
+                    result,
+                    self._context_chunk(result.chunk),
+                    context_mode="partial_file",
+                    complete_file=False,
+                    allow_truncate=True,
+                )
+
+        for result in fallback_results:
+            add_block(
+                result,
+                self._context_chunk(result.chunk),
+                context_mode="semantic_chunk",
+                complete_file=False,
+                allow_truncate=True,
+            )
         return RAGContextPack(
             query=query,
             max_chars=max_chars,
@@ -277,6 +352,74 @@ class RAGRetriever:
             return chunk
         companion = self.source_companion(chunk)
         return companion or chunk
+
+    def _full_source_file_chunk(self, path: str) -> RAGChunk | None:
+        source_chunks = self.source_chunks_by_path.get(path, [])
+        if not source_chunks:
+            return None
+        numbered_lines: dict[int, str] = {}
+        for chunk in source_chunks:
+            for line_no, line in self._source_code_lines(chunk):
+                numbered_lines.setdefault(line_no, line)
+        if not numbered_lines:
+            return None
+        start_line = min(numbered_lines)
+        end_line = max(numbered_lines)
+        file_chunk = self._file_chunk(path)
+        total_lines = self._line_value(file_chunk.metadata.get("lines") if file_chunk else None, end_line)
+        language = (
+            str(source_chunks[0].metadata.get("language") or "")
+            or str(file_chunk.metadata.get("language") if file_chunk else "")
+        )
+        contiguous = len(numbered_lines) == end_line - start_line + 1
+        complete_file = start_line == 1 and contiguous and (not total_lines or end_line >= total_lines)
+        code = [f"{line_no}: {numbered_lines[line_no]}" for line_no in sorted(numbered_lines)]
+        return RAGChunk(
+            id=f"source-file:{path}",
+            kind="source",
+            title=f"{path}: full source file",
+            text="\n".join(
+                [
+                    f"Source file: {path}",
+                    f"Language: {language or 'unknown'}",
+                    f"Line range: {start_line}-{end_line}",
+                    f"Complete file: {'yes' if complete_file else 'no'}",
+                    "Code:",
+                    *code,
+                ]
+            ),
+            path=path,
+            line=start_line,
+            node_ids=[f"file:{path}"],
+            evidence=source_chunks[0].evidence,
+            metadata={
+                "language": language,
+                "start_line": start_line,
+                "end_line": end_line,
+                "complete_file": complete_file,
+                "source_chunk_count": len(source_chunks),
+            },
+        )
+
+    def _file_chunk(self, path: str) -> RAGChunk | None:
+        for chunk in self.chunks_by_path.get(path, []):
+            if chunk.kind == "file":
+                return chunk
+        return None
+
+    @staticmethod
+    def _source_code_lines(chunk: RAGChunk) -> list[tuple[int, str]]:
+        lines = chunk.text.splitlines()
+        try:
+            code_start = lines.index("Code:") + 1
+        except ValueError:
+            code_start = 0
+        parsed: list[tuple[int, str]] = []
+        for line in lines[code_start:]:
+            match = re.match(r"^(\d+): ?(.*)$", line)
+            if match:
+                parsed.append((int(match.group(1)), match.group(2)))
+        return parsed
 
     @staticmethod
     def _line_value(value: object, fallback: int | None = None) -> int | None:
