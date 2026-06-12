@@ -573,6 +573,7 @@ class PackagingTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('ask.add_argument("--context-chars", default="48000")', script)
+        self.assertIn('ready.add_argument("--context-chars", default="48000")', script)
 
     def test_skill_wrapper_exposes_optional_llm_flag(self) -> None:
         script = (ROOT / "skills" / "aegis-repo-analyst" / "scripts" / "run_aegis.py").read_text(
@@ -580,6 +581,7 @@ class PackagingTest(unittest.TestCase):
         )
         self.assertIn('analyze.add_argument("--llm", action="store_true")', script)
         self.assertIn('ready.add_argument("--llm", action="store_true")', script)
+        self.assertIn('ready.add_argument("--ask")', script)
         self.assertIn('if getattr(args, "llm", False):', script)
 
 
@@ -683,8 +685,6 @@ class CLITest(unittest.TestCase):
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["repo"], "eda_repo")
             self.assertIn("qa", payload)
-            self.assertTrue(payload["qa"]["required_context_satisfied"])
-            self.assertIn("llm_prompt", payload["qa"])
             self.assertFalse(payload["qa"]["used_llm"])
             self.assertIn("context_pack", payload["qa"])
             self.assertIn("llm_prompt", payload["qa"])
@@ -1115,18 +1115,23 @@ class CLITest(unittest.TestCase):
             self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
             self.assertTrue(Path(payload["outputs"]["manifest"]).exists())
 
-    def test_skill_wrapper_ready_from_output(self) -> None:
+    def test_ready_ask_verifies_qa_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
             completed = subprocess.run(
                 [
                     sys.executable,
-                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
-                    "ready",
-                    "--from-output",
-                    str(result.output_dir),
-                    "--fail-under",
+                    "main.py",
+                    "examples/eda_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--ready",
+                    "--ready-fail-under",
                     "1.0",
+                    "--ready-ask",
+                    "Where is the entrypoint?",
                     "--json",
                 ],
                 cwd=ROOT,
@@ -1139,6 +1144,41 @@ class CLITest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
             self.assertTrue(payload["readiness"]["passed"])
+            qa_check = next(check for check in payload["readiness"]["checks"] if check["name"] == "qa")
+            self.assertEqual(qa_check["status"], "ok")
+            self.assertTrue(qa_check["detail"]["required_context_satisfied"])
+            self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
+            self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
+            self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())
+
+    def test_skill_wrapper_ready_from_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
+                    "ready",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--fail-under",
+                    "1.0",
+                    "--ask",
+                    "POST /users call chain",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertTrue(payload["readiness"]["passed"])
+            qa_check = next(check for check in payload["readiness"]["checks"] if check["name"] == "qa")
+            self.assertEqual(qa_check["status"], "ok")
 
     def test_eval_quality_gate_passes_when_score_meets_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

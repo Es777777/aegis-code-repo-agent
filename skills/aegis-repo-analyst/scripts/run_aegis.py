@@ -104,6 +104,9 @@ def parse_args() -> argparse.Namespace:
     ready.add_argument("--exclude", action="append", default=[])
     ready.add_argument("--suite")
     ready.add_argument("--fail-under", default="0.75")
+    ready.add_argument("--ask")
+    ready.add_argument("--top-k", default="8")
+    ready.add_argument("--context-chars", default="48000")
     ready.add_argument("--no-cache", action="store_true")
     ready.add_argument("--llm", action="store_true")
     ready.add_argument("--json", action="store_true")
@@ -184,6 +187,17 @@ def main() -> int:
         command = [*common, "--ready", "--ready-fail-under", str(args.fail_under)]
         if args.suite:
             command.extend(["--eval-suite", args.suite])
+        if args.ask:
+            command.extend(
+                [
+                    "--ready-ask",
+                    args.ask,
+                    "--top-k",
+                    str(args.top_k),
+                    "--context-chars",
+                    str(args.context_chars),
+                ]
+            )
         return run(command, cwd=root)
     raise SystemExit(f"Unknown command: {args.command}")
 

@@ -155,11 +155,14 @@ Use this before claiming the system is ready. The evaluation reports RAG recall,
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --json
 python skills\aegis-repo-analyst\scripts\run_aegis.py ready --from-output output\aegis\<repo-name> --fail-under 1.0 --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --ask "POST /users call chain" --json
 ```
 
 Use this before demos or submissions. It aggregates doctor checks, required
 artifacts, knowledge/CodeGraph/RAG health, and evaluation score into
-`readiness.json`. Treat `readiness.passed=false` as not ready.
+`readiness.json`. Add `--ask` to also verify QA artifacts, prompt-ready
+complete-file context, and required-context safety. Treat
+`readiness.passed=false` as not ready.
 
 AEGIS also writes `manifest.json` for each run. Use it to verify the AEGIS
 version, run configuration, repository identity, summary stats, and artifact

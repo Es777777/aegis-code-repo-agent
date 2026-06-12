@@ -310,6 +310,7 @@ CLI:
 ```powershell
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
+python main.py examples\sample_repo --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
 ```
 
 Output:
@@ -318,6 +319,10 @@ Output:
 - `readiness.checks`
 - `readiness.summary`
 - `output/aegis/<repo-name>/readiness.json`
+
+`--ready-ask` adds a QA smoke question to the readiness run. It verifies that
+`qa_answer.json`, `context_pack.md`, and `llm_prompt.md` were written and that
+the context pack has complete-file source context with required paths satisfied.
 
 The command returns exit code `2` when readiness fails.
 

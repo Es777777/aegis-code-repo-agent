@@ -54,6 +54,7 @@ python main.py <repo-path>
 python main.py <repo-path> --trace-interface /users
 python main.py <repo-path> --impact --impact-file services/user_service.py --json
 python main.py <repo-path> --ready --ready-fail-under 1.0 --json
+python main.py <repo-path> --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
 python main.py <repo-path> --ask "Where is user creation implemented?"
 python main.py <repo-path> --ask "Explain /users" --llm
 ```
@@ -99,6 +100,7 @@ Readiness JSON fields:
 - `passed`: final readiness verdict.
 - `threshold`: evaluation score threshold used by the gate.
 - `checks`: named checks with `ok`, `warning`, or `error` status.
+- `checks[name=qa]`: QA smoke status when `--ready-ask` was provided.
 - `checks[*].detail`: includes evaluation coverage metrics for the evaluation check.
 - `summary`: names grouped by status.
 

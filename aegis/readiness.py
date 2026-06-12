@@ -33,11 +33,13 @@ class ReadinessAssessor:
         *,
         doctor_payload: dict[str, Any] | None = None,
         evaluation_payload: dict[str, Any] | None = None,
+        qa_payload: dict[str, Any] | None = None,
         threshold: float = 0.75,
     ) -> None:
         self.result = result
         self.doctor_payload = doctor_payload
         self.evaluation_payload = evaluation_payload
+        self.qa_payload = qa_payload
         self.threshold = threshold
 
     def run(self) -> dict[str, Any]:
@@ -48,6 +50,7 @@ class ReadinessAssessor:
             self._knowledge_check(),
             self._codegraph_check(),
             self._rag_check(),
+            self._qa_check(),
             self._evaluation_check(),
         ]
         errors = sum(1 for check in checks if check.status == "error")
@@ -232,6 +235,54 @@ class ReadinessAssessor:
                 "complete_file_expected_path_coverage": metrics.get(
                     "complete_file_expected_path_coverage"
                 ),
+            },
+        )
+
+    def _qa_check(self) -> ReadinessCheck:
+        if not self.qa_payload:
+            return ReadinessCheck(
+                name="qa",
+                status="warning",
+                message="QA smoke question was not run. Pass --ready-ask to verify ask artifacts.",
+            )
+        outputs = {
+            "qa_answer.json": self.result.output_dir / "qa_answer.json",
+            "context_pack.md": self.result.output_dir / "context_pack.md",
+            "llm_prompt.md": self.result.output_dir / "llm_prompt.md",
+        }
+        missing_artifacts = [name for name, path in outputs.items() if not path.exists()]
+        context_pack = self.qa_payload.get("context_pack", {})
+        blocks = context_pack.get("blocks", []) if isinstance(context_pack, dict) else []
+        source_paths = context_pack.get("source_paths", []) if isinstance(context_pack, dict) else []
+        complete_file_paths = (
+            context_pack.get("complete_file_paths", []) if isinstance(context_pack, dict) else []
+        )
+        missing_required = self.qa_payload.get("missing_required_context_paths", [])
+        satisfied = bool(self.qa_payload.get("required_context_satisfied"))
+        ok = (
+            not missing_artifacts
+            and bool(blocks)
+            and bool(source_paths)
+            and bool(complete_file_paths)
+            and satisfied
+            and not missing_required
+        )
+        return ReadinessCheck(
+            name="qa",
+            status="ok" if ok else "error",
+            message=(
+                "QA smoke produced prompt-ready complete-file context."
+                if ok
+                else "QA smoke did not produce safe prompt-ready context."
+            ),
+            detail={
+                "question": self.qa_payload.get("question"),
+                "used_llm": self.qa_payload.get("used_llm"),
+                "missing_artifacts": missing_artifacts,
+                "source_paths": source_paths,
+                "complete_file_paths": complete_file_paths,
+                "required_context_satisfied": satisfied,
+                "missing_required_context_paths": missing_required,
             },
         )
 

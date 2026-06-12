@@ -454,6 +454,7 @@ and evaluation metrics into one machine-readable verdict.
 ```powershell
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
+python main.py examples\sample_repo --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
 ```
 
 The command writes:
@@ -469,6 +470,10 @@ Important JSON fields:
 - `readiness.checks[*].name`
 - `readiness.checks[*].status`
 - `readiness.summary`
+
+Use `--ready-ask` when you want the gate to also prove the QA path. It writes
+`qa_answer.json`, `context_pack.md`, and `llm_prompt.md`, then adds a `qa`
+readiness check for complete-file prompt context and required-context safety.
 
 `--ready` returns exit code `2` when any readiness check fails, which makes it
 suitable for CI and competition scripts.

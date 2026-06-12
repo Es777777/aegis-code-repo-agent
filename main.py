@@ -69,6 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-fail-under", type=float, help="Fail when overall_score is below this 0..1 threshold")
     parser.add_argument("--ready", action="store_true", help="Run readiness checks and write readiness.json")
     parser.add_argument("--ready-fail-under", type=float, default=0.75, help="Readiness evaluation score threshold")
+    parser.add_argument("--ready-ask", help="Run an ask smoke question before readiness and verify QA artifacts")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     return parser.parse_args()
 
@@ -351,6 +352,8 @@ def main() -> int:
         raise SystemExit("--context-chars must be a positive integer")
     if args.impact_depth < 0:
         raise SystemExit("--impact-depth must be zero or greater")
+    if args.ready_ask and not args.ready:
+        raise SystemExit("--ready-ask requires --ready")
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
@@ -407,7 +410,8 @@ def main() -> int:
         impact = query.impacted_by_files(paths, max_depth=args.impact_depth) if paths else []
         payload["impact"] = impact_payload(paths, impact, depth=args.impact_depth, source=source)
         write_json(result.output_dir / "impact.json", payload["impact"])
-    if args.ask:
+    ask_question = args.ask or args.ready_ask
+    if ask_question:
         llm_config = LLMConfig.from_env(enabled=args.llm)
         rag_index = get_rag_index(result, prefer_saved=bool(args.from_output))
         qa = RepositoryQAAgent(
@@ -416,7 +420,7 @@ def main() -> int:
             llm=LLMClient(llm_config) if llm_config.enabled else None,
         )
         answer = qa.answer(
-            args.ask,
+            ask_question,
             top_k=args.top_k,
             max_context_chars=args.context_chars,
         )
@@ -442,11 +446,12 @@ def main() -> int:
             result,
             doctor_payload=doctor_payload,
             evaluation_payload=payload.get("evaluation"),
+            qa_payload=payload.get("qa"),
             threshold=args.ready_fail_under,
         ).run()
         write_json(result.output_dir / "readiness.json", readiness)
         payload["readiness"] = readiness
-    if args.ready or should_eval or should_impact or args.ask:
+    if args.ready or should_eval or should_impact or ask_question:
         refresh_manifest(result, args)
 
     if args.json:
@@ -488,7 +493,7 @@ def main() -> int:
                     location = ""
                 print(f"- {node.kind}: {node.name}{location}")
             print(f"- impact: {payload['outputs']['impact']}")
-    if args.ask and answer:
+    if ask_question and answer:
         print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
         print(answer.answer)
         print("\nContext pack:")
