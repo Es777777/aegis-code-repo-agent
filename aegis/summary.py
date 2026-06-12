@@ -33,7 +33,16 @@ def write_run_summary(
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = build_run_summary(result, payload=payload)
-    write_json(result.output_dir / "run_summary.json", summary)
+    summary_path = result.output_dir / "run_summary.json"
+    write_json(summary_path, summary)
+    for _ in range(3):
+        current_size = summary_path.stat().st_size if summary_path.exists() else 0
+        artifact = summary["artifacts"]["run_summary.json"]
+        if artifact.get("exists") is True and artifact.get("size") == current_size:
+            break
+        artifact["exists"] = summary_path.exists()
+        artifact["size"] = current_size
+        write_json(summary_path, summary)
     return summary
 
 

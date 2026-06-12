@@ -270,6 +270,11 @@ class WorkflowTest(unittest.TestCase):
             self.assertEqual(summary["status"], "analyzed")
             self.assertFalse(summary["qa"]["available"])
             self.assertTrue(summary["artifacts"]["knowledge.json"]["exists"])
+            self.assertTrue(summary["artifacts"]["run_summary.json"]["exists"])
+            self.assertEqual(
+                summary["artifacts"]["run_summary.json"]["size"],
+                (second.output_dir / "run_summary.json").stat().st_size,
+            )
             manifest = json.loads((second.output_dir / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["schema_version"], "1.1")
             self.assertEqual(manifest["repo"]["name"], "sample_repo")
