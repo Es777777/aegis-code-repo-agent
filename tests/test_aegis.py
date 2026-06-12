@@ -271,6 +271,47 @@ class EvaluationTest(unittest.TestCase):
 
 
 class EnvConfigTest(unittest.TestCase):
+    def test_env_example_covers_runtime_configuration(self) -> None:
+        text = (ROOT / ".env.example").read_text(encoding="utf-8")
+        required = {
+            "AEGIS_REPO_PATH",
+            "AEGIS_OUTPUT_DIR",
+            "AEGIS_MAX_FILES",
+            "AEGIS_RAG_CONTEXT_CHARS",
+            "AEGIS_INCLUDE",
+            "AEGIS_EXCLUDE",
+            "AEGIS_USE_CACHE",
+            "AEGIS_SERVE_DIR",
+            "AEGIS_SERVE_HOST",
+            "AEGIS_SERVE_PORT",
+            "AEGIS_LLM_ENABLED",
+            "AEGIS_LLM_API_KEY",
+            "AEGIS_LLM_BASE_URL",
+            "AEGIS_LLM_MODEL",
+            "AEGIS_LLM_TIMEOUT_SECONDS",
+            "AEGIS_LLM_MAX_CONTEXT_CHARS",
+        }
+        for key in required:
+            self.assertIn(f"{key}=", text)
+        old_values = {key: os.environ.get(key) for key in required}
+        try:
+            for key in required:
+                os.environ.pop(key, None)
+            load_env_file(ROOT / ".env.example")
+            config = AegisConfig.from_env()
+            self.assertEqual(config.repo_path, "examples/sample_repo")
+            self.assertEqual(config.output_dir, "output/aegis")
+            self.assertEqual(config.rag_context_chars, 16000)
+            self.assertEqual(config.include, [])
+            self.assertEqual(config.exclude, [])
+            self.assertFalse(config.llm.enabled)
+        finally:
+            for key, value in old_values.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
     def test_load_env_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".env"
