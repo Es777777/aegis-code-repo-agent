@@ -22,6 +22,7 @@ Files:
 - `llm_prompt.md`: optional exact system/user prompt created by `--ask`.
 - `manifest.json`: analysis run manifest with version, config, stats, and artifact inventory.
 - `run_summary.json`: compact downstream-agent handoff with status, artifact availability, QA/RAG safety, evaluation, readiness, impact, and next actions.
+- `handoff_card.json`: unified downstream-agent task card with primary action, reusable evidence pointers, and the best available investigation brief.
 
 CodeGraph node kinds:
 
@@ -52,6 +53,7 @@ Useful CLI forms:
 
 ```powershell
 python main.py <repo-path>
+python main.py --from-output output\aegis\<repo-name> --status --json
 python main.py <repo-path> --trace-interface /users
 python main.py <repo-path> --impact --impact-file services/user_service.py --json
 python main.py <repo-path> --ready --ready-fail-under 1.0 --json
@@ -64,10 +66,15 @@ python main.py <repo-path> --ask "Explain /users" --llm
 Ask JSON fields:
 
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
+- `qa.investigation_brief`: structured reading brief for downstream agents, including required files, supporting files, reading order, and guardrails.
 - `qa.required_context_paths`: CodeGraph trace paths, explicit file mentions, and `--context-file` paths forced into prompt context.
 - `qa.target_context_paths`: retrieval-selected and required files that should be complete in prompt context.
+- `qa.supporting_context_paths`: target files that are useful but not mandatory evidence roots.
+- `qa.reading_order`: prioritized required/supporting file groups another agent should read in order.
 - `qa.context_pack.required_context_budget_chars`: estimated budget for complete required-file source.
 - `qa.context_pack.target_context_budget_chars`: estimated budget for complete target-file source.
+- `qa.context_pack.supporting_context_paths`: same supporting-file split at context-pack level.
+- `qa.context_pack.reading_order`: same prioritized file groups at context-pack level.
 - `qa.missing_target_context_paths`: target files absent from prompt context because of budget or missing source.
 - `qa.incomplete_target_context_paths`: target files present only as partial source windows.
 - `qa.unsatisfied_target_context_paths`: target files absent from prompt context or present only partially.
@@ -131,3 +138,33 @@ Manifest JSON fields:
 - `run.post_run`: ask/ready/eval/trace/impact command context when post-run artifacts were produced.
 - `stats`: file, CodeGraph, RAG, and finding summaries.
 - `artifacts`: artifact paths, existence, byte sizes, and SHA256 digests.
+
+Status JSON fields:
+
+- `summary`: trusted `run_summary.json` when manifest integrity passes, otherwise a rebuilt live summary.
+- `handoff_card`: trusted `handoff_card.json` when present, otherwise a rebuilt live handoff card.
+- `handoff_card.primary_task.recommended_args`: replayable CLI args for the current primary task. QA, repair-plan, and summary-driven tasks all expose the same machine-friendly field.
+- `handoff_card.primary_task.recommended_command_line`: ready-to-run CLI command for the current primary task; QA tasks include the resolved `--from-output`, `--context-chars`, and `--context-file` contract when available.
+- `orchestration`: top-level echo of `summary.orchestration`.
+- `orchestration.repair_ready`: whether structured remediation steps are available.
+- `orchestration.blocking_issues_count`: number of current blocking remediation items.
+- `orchestration.primary_repair_step`: first remediation item another agent should execute.
+- `orchestration.repair_plan[*]`: ordered remediation steps with category, severity, affected commands, and suggested CLI command.
+- `orchestration.repair_plan[*].failing_rag_cases`: failing evaluation questions with missing expected/prompt/complete-file paths when the evaluation gate failed.
+- `orchestration.repair_plan[*].failing_trace_cases`: failing trace cases when the evaluation gate failed on route tracing.
+- `orchestration.repair_plan[*].failing_checks`: readiness checks still in `warning` or `error` when the readiness gate failed.
+- `orchestration.repair_plan[*].investigation_brief`: structured remediation card for downstream agents, including question, focus files, reading order, guardrails, and failure evidence.
+- `orchestration.repair_plan[*].focus_paths`: likely source files that should be inspected first.
+- `orchestration.repair_plan[*].suggested_context_files`: paths that can be passed back into `--context-file`.
+- `orchestration.repair_plan[*].suggested_context_chars`: suggested `--context-chars` budget for the investigation ask command, estimated from saved source chunks in `rag_index.json` when available and falling back to heuristics otherwise.
+- `orchestration.repair_plan[*].investigation_command_line`: a ready-to-run ask command for investigating the failing area.
+- `status_report.manifest_integrity`: current manifest/hash verification result for the output directory.
+- `status_report.run_summary_artifact`: whether `run_summary.json` exists, is readable, and is trusted.
+- `status_report.handoff_card_artifact`: whether `handoff_card.json` exists and is trusted under current manifest integrity.
+- `status_report.handoff_card_validation`: schema and required-field validation result for `handoff_card.json`.
+- `status_report.artifact_contracts`: artifact dependency-contract summary.
+- `status_report.repair_plan`: status-level echo of the current remediation steps.
+- `status_report.primary_repair_step`: status-level echo of the first remediation step.
+- `status_report.primary_repair_step.investigation_brief`: status-level echo of the structured remediation card another agent can execute directly.
+- `status_report.reuse_by_command.can_reuse_for`: commands that can safely use `--from-output` now.
+- `status_report.reuse_by_command.blocked_by`: commands currently blocked by missing roots or dangling artifacts.

@@ -43,6 +43,7 @@ class QAAnswer:
     used_llm: bool = False
     context_safe_for_llm: bool = False
     llm_skip_reason: str = ""
+    investigation_brief: dict[str, Any] | None = None
 
 
 class RepositoryQAAgent:
@@ -79,11 +80,17 @@ class RepositoryQAAgent:
             max_chars=max_context_chars,
             required_paths=required_paths,
         )
+        investigation_brief = self._investigation_brief(
+            question,
+            graph_context=graph_context,
+            context_pack=context_pack,
+        )
         system = self._llm_system_prompt()
         user = self._llm_user_prompt(
             question,
             graph_context=graph_context,
             context_pack=context_pack,
+            investigation_brief=investigation_brief,
         )
         unsatisfied_required_paths = context_pack.unsatisfied_required_context_paths()
         llm_skip_reason = self._llm_context_skip_reason(context_pack)
@@ -101,6 +108,7 @@ class RepositoryQAAgent:
                     graph_context=graph_context,
                     used_llm=True,
                     context_safe_for_llm=True,
+                    investigation_brief=investigation_brief,
                 )
             except LLMError as exc:
                 fallback = self._offline_answer(
@@ -122,6 +130,7 @@ class RepositoryQAAgent:
                     used_llm=False,
                     context_safe_for_llm=True,
                     llm_skip_reason=f"LLM request failed: {exc}",
+                    investigation_brief=investigation_brief,
                 )
         if self.llm and self.llm.available and not context_safe_for_llm:
             fallback = self._offline_answer(
@@ -146,6 +155,7 @@ class RepositoryQAAgent:
                 used_llm=False,
                 context_safe_for_llm=False,
                 llm_skip_reason=llm_skip_reason,
+                investigation_brief=investigation_brief,
             )
         return QAAnswer(
             question=question,
@@ -164,6 +174,7 @@ class RepositoryQAAgent:
             used_llm=False,
             context_safe_for_llm=context_safe_for_llm,
             llm_skip_reason=llm_skip_reason,
+            investigation_brief=investigation_brief,
         )
 
     def _offline_answer(
@@ -301,6 +312,7 @@ class RepositoryQAAgent:
                     *self._graph_source_paths(graph_context),
                     *self._explicit_source_paths(question),
                     *self._explicit_symbol_paths(question),
+                    *self._related_required_source_paths(question),
                 ]
             )
         )
@@ -390,6 +402,60 @@ class RepositoryQAAgent:
                 paths.extend(sorted(node_paths))
         return list(dict.fromkeys(paths))
 
+    def _related_required_source_paths(self, question: str) -> list[str]:
+        if self._explicit_source_paths(question):
+            return []
+        symbol_paths = self._explicit_symbol_paths(question)
+        if not symbol_paths:
+            return []
+        graph_paths = self._graph_neighbor_paths(symbol_paths)
+        return list(dict.fromkeys([*symbol_paths, *graph_paths]))
+
+    def _graph_neighbor_paths(self, seed_paths: list[str]) -> list[str]:
+        if not seed_paths:
+            return []
+        nodes_by_id = {node.id: node for node in self.knowledge.code_graph.nodes}
+        edges = self.knowledge.code_graph.edges
+        seed_ids = {f"file:{path}" for path in seed_paths}
+        related_paths: list[str] = []
+        allowed_kinds = {"calls_file", "imports", "routes_to", "defined_in", "declared_in"}
+        for edge in edges:
+            if edge.kind not in allowed_kinds:
+                continue
+            if edge.source in seed_ids:
+                related_paths.extend(self._graph_edge_target_paths(edge.target, nodes_by_id))
+            if edge.target in seed_ids:
+                related_paths.extend(self._graph_edge_target_paths(edge.source, nodes_by_id))
+        return [
+            path
+            for path in dict.fromkeys(related_paths)
+            if path not in seed_paths
+        ]
+
+    @staticmethod
+    def _graph_edge_target_paths(
+        node_id: str,
+        nodes_by_id: dict[str, Any],
+    ) -> list[str]:
+        paths: list[str] = []
+        if node_id.startswith("file:"):
+            paths.append(node_id[len("file:") :])
+        elif node_id.startswith("symbol:"):
+            remainder = node_id[len("symbol:") :]
+            parts = remainder.rsplit(":", 1)
+            if len(parts) == 2:
+                paths.append(parts[0])
+        elif node_id.startswith("interface:"):
+            remainder = node_id[len("interface:") :]
+            parts = remainder.split(":", 2)
+            if len(parts) == 3:
+                paths.append(parts[0])
+        else:
+            node = nodes_by_id.get(node_id)
+            if node and isinstance(node.path, str) and node.path:
+                paths.append(node.path)
+        return list(dict.fromkeys(paths))
+
     @staticmethod
     def _identifier_compact(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", "", value.lower())
@@ -401,9 +467,11 @@ class RepositoryQAAgent:
             "context pack. The context pack contains real line-numbered source "
             "files when complete_file=true, and focused source windows otherwise. "
             "Treat Files in context and Complete files in context as the source of "
-            "truth. If Graph Context is present, use it to explain route and "
-            "call-chain structure, then verify with source blocks. If the source "
-            "evidence is insufficient, say so. Cite file paths and line ranges."
+            "truth. Follow the investigation brief in order: required files first, "
+            "then supporting files, then unresolved gaps. If Graph Context is present, "
+            "use it to explain route and call-chain structure, then verify with source "
+            "blocks. Never infer behavior from missing or incomplete required files. "
+            "If the source evidence is insufficient, say so. Cite file paths and line ranges."
         )
 
     @staticmethod
@@ -436,9 +504,80 @@ class RepositoryQAAgent:
         *,
         graph_context: dict[str, Any] | None,
         context_pack: RAGContextPack,
+        investigation_brief: dict[str, Any] | None,
     ) -> str:
         graph_section = cls._render_graph_context(graph_context)
-        return f"Question: {question}\n\n{graph_section}\n\n{context_pack.render()}"
+        brief_section = cls._render_investigation_brief(investigation_brief)
+        return (
+            f"Question: {question}\n\n"
+            f"{brief_section}\n\n"
+            f"{graph_section}\n\n"
+            f"{context_pack.render()}"
+        )
+
+    @staticmethod
+    def _investigation_brief(
+        question: str,
+        *,
+        graph_context: dict[str, Any] | None,
+        context_pack: RAGContextPack,
+    ) -> dict[str, Any]:
+        reading_order = context_pack.reading_order()
+        return {
+            "question": question,
+            "route": graph_context.get("route") if graph_context else None,
+            "required_context_paths": list(context_pack.required_context_paths or []),
+            "supporting_context_paths": context_pack.supporting_context_paths(),
+            "missing_required_context_paths": context_pack.missing_required_context_paths(),
+            "incomplete_required_context_paths": context_pack.incomplete_required_context_paths(),
+            "missing_target_context_paths": context_pack.missing_target_context_paths(),
+            "incomplete_target_context_paths": context_pack.incomplete_target_context_paths(),
+            "reading_order": reading_order,
+            "guardrails": [
+                "Read required files before supporting files.",
+                "Treat incomplete or missing required files as unresolved evidence gaps.",
+                "Use graph context only after source files confirm the claim.",
+                "Cite exact file paths and line ranges for every substantive claim.",
+            ],
+        }
+
+    @staticmethod
+    def _render_investigation_brief(brief: dict[str, Any] | None) -> str:
+        if not brief:
+            return "Investigation Brief: unavailable"
+        lines = [
+            "Investigation Brief:",
+            f"Question: {brief.get('question', '')}",
+        ]
+        route = brief.get("route")
+        if route:
+            lines.append(f"Route focus: {route}")
+        lines.append(
+            "Required files: "
+            + (", ".join(brief.get("required_context_paths", [])) or "none")
+        )
+        lines.append(
+            "Supporting files: "
+            + (", ".join(brief.get("supporting_context_paths", [])) or "none")
+        )
+        lines.append(
+            "Missing required files: "
+            + (", ".join(brief.get("missing_required_context_paths", [])) or "none")
+        )
+        lines.append(
+            "Incomplete required files: "
+            + (", ".join(brief.get("incomplete_required_context_paths", [])) or "none")
+        )
+        lines.append("Reading order:")
+        for item in brief.get("reading_order", []):
+            lines.append(
+                f"- {item.get('priority')}. {item.get('label')}: "
+                + (", ".join(item.get("paths", [])) or "none")
+            )
+        lines.append("Guardrails:")
+        for rule in brief.get("guardrails", []):
+            lines.append(f"- {rule}")
+        return "\n".join(lines)
 
     @staticmethod
     def _source_excerpt(

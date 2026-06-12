@@ -101,18 +101,35 @@ class RAGContextPack:
 
     def render(self) -> str:
         source_paths = self.source_paths()
+        complete_file_paths = self.complete_file_paths()
+        supporting_paths = self.supporting_context_paths()
         missing_required_paths = self.missing_required_context_paths()
         incomplete_required_paths = self.incomplete_required_context_paths()
         unsatisfied_required_paths = self.unsatisfied_required_context_paths()
         missing_target_paths = self.missing_target_context_paths()
         incomplete_target_paths = self.incomplete_target_context_paths()
         unsatisfied_target_paths = self.unsatisfied_target_context_paths()
+        complete_required_paths = [
+            path
+            for path in self.required_context_paths or []
+            if path in complete_file_paths
+        ]
+        complete_supporting_paths = [
+            path
+            for path in supporting_paths
+            if path in complete_file_paths
+        ]
+        partial_supporting_paths = [
+            path
+            for path in supporting_paths
+            if path in incomplete_target_paths
+        ]
         lines = [
             "AEGIS RAG CONTEXT PACK",
             f"Query: {self.query}",
             f"Budget: {self.used_chars}/{self.max_chars} chars",
             f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
-            f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
+            f"Complete files in context: {', '.join(complete_file_paths) or 'none'}",
             f"Target context paths: {', '.join(self.target_context_paths or []) or 'none'}",
             f"Target complete-file budget estimate: {self.target_context_budget_chars} chars",
             f"Missing target context paths: {', '.join(missing_target_paths) or 'none'}",
@@ -123,6 +140,17 @@ class RAGContextPack:
             f"Missing required context paths: {', '.join(missing_required_paths) or 'none'}",
             f"Incomplete required context paths: {', '.join(incomplete_required_paths) or 'none'}",
             f"Required context satisfied: {str(not unsatisfied_required_paths).lower()}",
+            "Reading order:",
+            f"1. Required complete files: {', '.join(complete_required_paths) or 'none'}",
+            "2. Required missing or incomplete files: "
+            f"{', '.join(unsatisfied_required_paths) or 'none'}",
+            f"3. Supporting complete files: {', '.join(complete_supporting_paths) or 'none'}",
+            "4. Supporting missing or partial files: "
+            f"{', '.join(list(dict.fromkeys([*missing_target_paths, *partial_supporting_paths]))) or 'none'}",
+            "Guardrails:",
+            "- Read required files first and treat them as the primary source of truth.",
+            "- Use supporting files to connect flow or dependencies, not to invent missing required evidence.",
+            "- If a required or target file is missing or incomplete, mark the answer as unresolved for that claim.",
             "Instruction: answer only from the real source files and line ranges below; cite paths and lines.",
             "",
         ]
@@ -178,6 +206,8 @@ class RAGContextPack:
             "target_context_paths": self.target_context_paths or [],
             "required_context_budget_chars": self.required_context_budget_chars,
             "target_context_budget_chars": self.target_context_budget_chars,
+            "supporting_context_paths": self.supporting_context_paths(),
+            "reading_order": self.reading_order(),
             "missing_required_context_paths": self.missing_required_context_paths(),
             "incomplete_required_context_paths": self.incomplete_required_context_paths(),
             "unsatisfied_required_context_paths": self.unsatisfied_required_context_paths(),
@@ -210,6 +240,54 @@ class RAGContextPack:
                 if block.chunk_kind == "source" and block.path and block.complete_file
             )
         )
+
+    def supporting_context_paths(self) -> list[str]:
+        required = set(self.required_context_paths or [])
+        return [
+            path
+            for path in dict.fromkeys(self.target_context_paths or [])
+            if path not in required
+        ]
+
+    def reading_order(self) -> list[dict[str, Any]]:
+        complete_file_paths = set(self.complete_file_paths())
+        required_paths = list(dict.fromkeys(self.required_context_paths or []))
+        supporting_paths = self.supporting_context_paths()
+        return [
+            {
+                "priority": 1,
+                "label": "required_complete",
+                "paths": [path for path in required_paths if path in complete_file_paths],
+            },
+            {
+                "priority": 2,
+                "label": "required_unsatisfied",
+                "paths": self.unsatisfied_required_context_paths(),
+            },
+            {
+                "priority": 3,
+                "label": "supporting_complete",
+                "paths": [path for path in supporting_paths if path in complete_file_paths],
+            },
+            {
+                "priority": 4,
+                "label": "supporting_unsatisfied",
+                "paths": list(
+                    dict.fromkeys(
+                        [
+                            path
+                            for path in self.missing_target_context_paths()
+                            if path in supporting_paths
+                        ]
+                        + [
+                            path
+                            for path in self.incomplete_target_context_paths()
+                            if path in supporting_paths
+                        ]
+                    )
+                ),
+            },
+        ]
 
     def missing_required_context_paths(self) -> list[str]:
         source_paths = set(self.source_paths())
@@ -332,18 +410,20 @@ class RAGRetriever:
         max_chars: int = 12000,
         required_paths: list[str] | None = None,
     ) -> RAGContextPack:
+        required_context_paths = list(dict.fromkeys(required_paths or []))
+        path_limit = max(1, top_k * 4, len(required_context_paths) + 4)
         candidates = self.search(query, top_k=max(top_k * 4, top_k + 12))
         candidates = self._expand_with_related_source_paths(
             candidates,
-            max_paths=max(1, top_k * 4),
+            max_paths=path_limit,
         )
         context_results = self.file_context(
             candidates,
-            max_paths=max(1, top_k * 3),
-            max_chunks=max(top_k * 8, top_k + 12),
+            max_paths=path_limit,
+            max_chunks=max(top_k * 8, path_limit * 6, top_k + 12),
         )
-        if required_paths:
-            context_results = self._required_path_results(required_paths) + context_results
+        if required_context_paths:
+            context_results = self._required_path_results(required_context_paths) + context_results
         blocks: list[RAGContextBlock] = []
         seen: set[str] = set()
         used_chars = 0
@@ -439,7 +519,6 @@ class RAGRetriever:
                 complete_file=False,
                 allow_truncate=True,
             )
-        required_context_paths = list(dict.fromkeys(required_paths or []))
         target_context_paths = list(dict.fromkeys([*required_context_paths, *path_order]))
         return RAGContextPack(
             query=query,
@@ -523,6 +602,8 @@ class RAGRetriever:
             add(chunk.path)
             companion = self.source_companion(chunk)
             add(companion.path if companion else None)
+        for node_path in self._node_id_paths(chunk.node_ids):
+            add(node_path)
         for node_id in chunk.node_ids:
             for related in self.chunks_by_node.get(node_id, []):
                 if related.kind == "source":
@@ -531,7 +612,36 @@ class RAGRetriever:
                 add(related.path)
                 companion = self.source_companion(related)
                 add(companion.path if companion else None)
+                for node_path in self._node_id_paths(related.node_ids):
+                    add(node_path)
         return list(dict.fromkeys(paths))
+
+    def _node_id_paths(self, node_ids: list[str]) -> list[str]:
+        return list(
+            dict.fromkeys(
+                path
+                for path in (self._path_from_node_id(node_id) for node_id in node_ids)
+                if path
+            )
+        )
+
+    @staticmethod
+    def _path_from_node_id(node_id: str) -> str | None:
+        if node_id.startswith("file:"):
+            return node_id[len("file:") :]
+        if node_id.startswith("data:"):
+            return node_id[len("data:") :]
+        if node_id.startswith("config:"):
+            return node_id[len("config:") :]
+        if node_id.startswith("symbol:"):
+            remainder = node_id[len("symbol:") :]
+            parts = remainder.rsplit(":", 1)
+            return parts[0] if len(parts) == 2 else None
+        if node_id.startswith("interface:"):
+            remainder = node_id[len("interface:") :]
+            parts = remainder.split(":", 2)
+            return parts[0] if len(parts) == 3 else None
+        return None
 
     def _best_source_chunk_for_path(self, path: str, seed: RAGChunk) -> RAGChunk | None:
         source_chunks = self.source_chunks_by_path.get(path, [])

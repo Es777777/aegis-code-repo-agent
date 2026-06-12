@@ -12,14 +12,29 @@ from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
-from aegis.manifest import build_manifest, format_manifest_integrity_errors, verify_manifest_integrity
+from aegis.manifest import (
+    contract_targets_for_command,
+    TRACKED_ARTIFACTS,
+    build_manifest,
+    format_artifact_contract_errors,
+    format_manifest_integrity_errors,
+    reuse_readiness_by_command,
+    verify_artifact_contracts,
+    verify_manifest_integrity,
+)
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import QAAnswer, RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
 from aegis.readiness import ReadinessAssessor
 from aegis.server import serve
-from aegis.summary import stabilize_manifest_and_summary, write_run_summary
+from aegis.summary import (
+    build_handoff_card,
+    build_run_summary,
+    stabilize_manifest_and_summary,
+    verify_handoff_card,
+    write_run_summary,
+)
 from aegis.utils import write_json
 
 
@@ -77,6 +92,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ready", action="store_true", help="Run readiness checks and write readiness.json")
     parser.add_argument("--ready-fail-under", type=float, default=0.75, help="Readiness evaluation score threshold")
     parser.add_argument("--ready-ask", help="Run an ask smoke question before readiness and verify QA artifacts")
+    parser.add_argument("--status", action="store_true", help="Inspect output status, reuse gates, and handoff summary")
+    parser.add_argument("--handoff", action="store_true", help="Return the unified handoff card plus minimal trust metadata")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     return parser.parse_args()
 
@@ -98,6 +115,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "context_pack": str(output_dir / "context_pack.md"),
         "llm_prompt": str(output_dir / "llm_prompt.md"),
         "run_summary": str(output_dir / "run_summary.json"),
+        "handoff_card": str(output_dir / "handoff_card.json"),
     }
 
 
@@ -197,8 +215,13 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "context_safe_for_llm": answer.context_safe_for_llm,
         "llm_skip_reason": answer.llm_skip_reason,
         "graph_context": answer.graph_context,
+        "investigation_brief": answer.investigation_brief,
         "required_context_paths": answer.required_context_paths,
         "target_context_paths": answer.context_pack.target_context_paths or [],
+        "supporting_context_paths": answer.context_pack.supporting_context_paths(),
+        "reading_order": answer.context_pack.reading_order(),
+        "source_paths": answer.context_pack.source_paths(),
+        "complete_file_paths": answer.context_pack.complete_file_paths(),
         "missing_required_context_paths": answer.context_pack.missing_required_context_paths(),
         "incomplete_required_context_paths": answer.context_pack.incomplete_required_context_paths(),
         "unsatisfied_required_context_paths": answer.context_pack.unsatisfied_required_context_paths(),
@@ -252,6 +275,17 @@ def render_qa_context_markdown(answer: QAAnswer) -> str:
         else:
             lines.append("No CodeGraph trace nodes were found.")
         lines.append("")
+    if answer.investigation_brief:
+        lines.extend(
+            [
+                "## Investigation Brief",
+                "",
+                "```text",
+                RepositoryQAAgent._render_investigation_brief(answer.investigation_brief),
+                "```",
+                "",
+            ]
+        )
     lines.extend(
         [
             "## Source Context",
@@ -276,6 +310,7 @@ def render_llm_prompt_markdown(answer: QAAnswer) -> str:
             f"LLM skip reason: {answer.llm_skip_reason or 'none'}",
             f"Required context paths: {', '.join(answer.required_context_paths) or 'none'}",
             f"Target context paths: {', '.join(answer.context_pack.target_context_paths or []) or 'none'}",
+            f"Supporting context paths: {', '.join(answer.context_pack.supporting_context_paths()) or 'none'}",
             "Missing required context paths: "
             f"{', '.join(answer.context_pack.missing_required_context_paths()) or 'none'}",
             "Incomplete required context paths: "
@@ -298,6 +333,12 @@ def render_llm_prompt_markdown(answer: QAAnswer) -> str:
             f"{str(answer.context_pack.complete_file_context_satisfied()).lower()}",
             f"Files in context: {', '.join(answer.context_pack.source_paths()) or 'none'}",
             f"Complete files in context: {', '.join(answer.context_pack.complete_file_paths()) or 'none'}",
+            "",
+            "## Investigation Brief",
+            "",
+            "```text",
+            RepositoryQAAgent._render_investigation_brief(answer.investigation_brief),
+            "```",
             "",
             "## System Prompt",
             "",
@@ -370,6 +411,7 @@ def analysis_run_manifest(result: Any, args: argparse.Namespace) -> dict[str, An
 def post_run_manifest(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "from_output": args.from_output,
+        "status": bool(args.status),
         "ask": args.ask,
         "ready_ask": args.ready_ask,
         "top_k": args.top_k,
@@ -399,7 +441,7 @@ def _events_count(output_dir: Path) -> int:
 
 
 def print_json(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
 
 
 def print_doctor(payload: dict[str, Any]) -> None:
@@ -429,6 +471,233 @@ def quality_gate_payload(metrics: dict[str, Any], threshold: float | None) -> di
     }
 
 
+def _action_flags_present(args: argparse.Namespace) -> bool:
+    return bool(
+        args.trace_interface
+        or args.impact
+        or args.impact_file
+        or args.ask
+        or args.eval
+        or args.eval_suite
+        or args.eval_fail_under is not None
+        or args.ready
+        or args.ready_ask
+    )
+
+
+def command_artifact_contracts(args: argparse.Namespace) -> dict[str, list[str]]:
+    ask_question = args.ask or args.ready_ask
+    should_eval = bool(args.eval or args.eval_suite or args.eval_fail_under is not None or args.ready)
+    should_impact = bool(args.impact or args.impact_file)
+    command_names: list[str] = []
+    if args.trace_interface:
+        command_names.append("trace")
+    if should_impact:
+        command_names.append("impact")
+    if ask_question:
+        command_names.append("ask")
+    if should_eval and not args.ready:
+        command_names.append("eval")
+    if args.ready:
+        command_names.append("ready")
+    required_roots: list[str] = []
+    related_artifacts: list[str] = []
+    for command_name in command_names:
+        targets = contract_targets_for_command(command_name)
+        required_roots.extend(targets["required_roots"])
+        related_artifacts.extend(targets["related_artifacts"])
+    return {
+        "required_roots": list(dict.fromkeys(required_roots or ["knowledge.json"])),
+        "related_artifacts": [name for name in dict.fromkeys(related_artifacts or ["run_summary.json"]) if name in TRACKED_ARTIFACTS],
+    }
+
+
+def _recovery_commands_from_message(message: str) -> list[str]:
+    commands: list[str] = []
+    lowered = message.lower()
+    if "qa_answer.json" in lowered or "context_pack.md" in lowered or "llm_prompt.md" in lowered:
+        commands.append("python main.py --from-output <output-dir> --ask \"<question>\" --json")
+    if "evaluation.json" in lowered:
+        commands.append("python main.py --from-output <output-dir> --eval --json")
+    if "readiness.json" in lowered:
+        commands.append("python main.py --from-output <output-dir> --ready --ready-fail-under 1.0 --json")
+    if "impact.json" in lowered:
+        commands.append("python main.py --from-output <output-dir> --impact --impact-file <path> --json")
+    if "knowledge.json" in lowered or "rag_index.json" in lowered or "manifest.json" in lowered:
+        commands.append("python main.py <repo-path> --out <output-root>")
+    if not commands:
+        commands.append("python main.py <repo-path> --out <output-root>")
+    return list(dict.fromkeys(commands))
+
+
+def _artifact_recovery_suffix(result: Any, message: str) -> str:
+    reuse = reuse_readiness_by_command(result.output_dir)
+    lines = []
+    if reuse["blocked_by"]:
+        lines.append("Blocked commands:")
+        for command, reason in reuse["blocked_by"].items():
+            lines.append(f"- {command}: {reason}")
+    commands = _recovery_commands_from_message(message)
+    if commands:
+        lines.append("Suggested recovery commands:")
+        lines.extend(f"- {command}" for command in commands)
+    return ("\n" + "\n".join(lines)) if lines else ""
+
+
+def _read_json_object_if_possible(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    detail = {
+        "path": str(path),
+        "exists": path.exists(),
+        "readable": False,
+        "trusted": False,
+        "source_used": "missing",
+        "error": None,
+    }
+    if not path.exists():
+        return {}, detail
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        detail["error"] = str(exc)
+        return {}, detail
+    if not isinstance(value, dict):
+        detail["error"] = "artifact is not a JSON object"
+        return {}, detail
+    detail["readable"] = True
+    detail["source_used"] = "artifact"
+    return value, detail
+
+
+def status_report_payload(
+    result: Any,
+    *,
+    manifest_check: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    manifest_check = manifest_check or verify_manifest_integrity(
+        result.output_dir,
+        repo_name=result.knowledge.repo_name,
+        validate_present_tracked=True,
+    )
+    summary_artifact, summary_detail = _read_json_object_if_possible(
+        result.output_dir / "run_summary.json"
+    )
+    summary_trusted = bool(summary_detail["readable"] and manifest_check.get("ok"))
+    summary_detail["trusted"] = summary_trusted
+    if summary_trusted:
+        summary = summary_artifact
+    else:
+        summary = build_run_summary(result)
+        summary_detail["source_used"] = "rebuilt"
+    handoff_artifact, handoff_detail = _read_json_object_if_possible(
+        result.output_dir / "handoff_card.json"
+    )
+    handoff_validation = verify_handoff_card(handoff_artifact) if handoff_artifact else {"ok": False, "detail": {"schema_version": None, "missing_fields": ["root"], "invalid_fields": [], "warnings": []}}
+    handoff_trusted = bool(
+        handoff_detail["readable"]
+        and manifest_check.get("ok")
+        and handoff_validation.get("ok")
+    )
+    handoff_detail["trusted"] = handoff_trusted
+    if handoff_trusted:
+        handoff_card = handoff_artifact
+    else:
+        handoff_card = build_handoff_card(result, summary=summary)
+        handoff_detail["source_used"] = "rebuilt"
+        handoff_validation = verify_handoff_card(handoff_card)
+    reuse = reuse_readiness_by_command(result.output_dir)
+    report = {
+        "ok": bool(manifest_check.get("ok")),
+        "output_dir": str(result.output_dir),
+        "manifest_integrity": manifest_check,
+        "run_summary_artifact": summary_detail,
+        "handoff_card_artifact": handoff_detail,
+        "handoff_card_validation": handoff_validation,
+        "artifact_contracts": summary.get("artifact_contracts", {}),
+        "repair_plan": summary.get("orchestration", {}).get("repair_plan", []),
+        "primary_repair_step": summary.get("orchestration", {}).get("primary_repair_step"),
+        "reuse_by_command": {
+            "can_reuse_for": reuse.get("can_reuse_for", []),
+            "blocked_by": reuse.get("blocked_by", {}),
+            "details": reuse.get("details", {}),
+        },
+    }
+    return summary, report, handoff_card
+
+
+def print_status(payload: dict[str, Any]) -> None:
+    summary = payload.get("summary", {})
+    orchestration = payload.get("orchestration", {})
+    status_report = payload.get("status_report", {})
+    print("AEGIS status:")
+    print(f"- repo: {payload.get('repo')}")
+    print(f"- output dir: {payload.get('outputs', {}).get('output_dir', '')}")
+    print(f"- summary status: {summary.get('status', 'unknown')}")
+    print(
+        "- manifest integrity: "
+        f"{'ok' if status_report.get('manifest_integrity', {}).get('ok') else 'failed'}"
+    )
+    artifact_detail = status_report.get("run_summary_artifact", {})
+    print(
+        "- run summary source: "
+        f"{artifact_detail.get('source_used', 'missing')}"
+        f" (trusted={str(bool(artifact_detail.get('trusted'))).lower()})"
+    )
+    print(
+        f"- recommended command: {orchestration.get('recommended_command', 'none')}"
+    )
+    if orchestration.get("recommended_command_line"):
+        print(f"- recommended command line: {orchestration['recommended_command_line']}")
+    can_reuse = status_report.get("reuse_by_command", {}).get("can_reuse_for", [])
+    print(f"- reusable commands: {', '.join(can_reuse) if can_reuse else 'none'}")
+    blocked = status_report.get("reuse_by_command", {}).get("blocked_by", {})
+    if blocked:
+        print("- blocked commands:")
+        for command, reason in blocked.items():
+            print(f"  - {command}: {reason}")
+    primary_repair = status_report.get("primary_repair_step")
+    if isinstance(primary_repair, dict):
+        print(
+            "- primary repair step: "
+            f"{primary_repair.get('summary', '')}"
+        )
+        if primary_repair.get("recommended_command_line"):
+            print(f"  - command: {primary_repair['recommended_command_line']}")
+    next_actions = summary.get("next_actions", [])
+    if next_actions:
+        print("- next actions:")
+        for item in next_actions:
+            print(f"  - {item}")
+
+
+def print_handoff(payload: dict[str, Any]) -> None:
+    handoff = payload.get("handoff_card", {})
+    status_report = payload.get("status_report", {})
+    primary = handoff.get("primary_task", {})
+    action = handoff.get("recommended_action", {})
+    print("AEGIS handoff:")
+    print(f"- repo: {payload.get('repo')}")
+    print(f"- status: {handoff.get('status', 'unknown')}")
+    print(
+        "- handoff trusted: "
+        f"{str(bool(status_report.get('handoff_card_artifact', {}).get('trusted'))).lower()}"
+    )
+    print(f"- recommended command: {action.get('command', 'none')}")
+    if action.get("command_line"):
+        print(f"- recommended command line: {action['command_line']}")
+    print(f"- primary task: {primary.get('summary', '')}")
+    if primary.get("recommended_command_line"):
+        print(f"- primary task command: {primary['recommended_command_line']}")
+    brief = primary.get("investigation_brief")
+    if isinstance(brief, dict):
+        reading_order = brief.get("reading_order", [])
+        if reading_order:
+            first = reading_order[0]
+            print(
+                "- first reading bucket: "
+                f"{first.get('label', '')} -> {', '.join(first.get('paths', [])) or 'none'}"
+            )
+
+
 def main() -> int:
     args = parse_args()
     if args.eval_fail_under is not None and not 0 <= args.eval_fail_under <= 1:
@@ -441,6 +710,8 @@ def main() -> int:
         raise SystemExit("--impact-depth must be zero or greater")
     if args.ready_ask and not args.ready:
         raise SystemExit("--ready-ask requires --ready")
+    if (args.status or args.handoff) and _action_flags_present(args):
+        raise SystemExit("--status/--handoff cannot be combined with ask/trace/impact/eval/ready actions")
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
@@ -460,15 +731,36 @@ def main() -> int:
     if args.from_output:
         try:
             result = load_analysis_result(Path(args.from_output))
-            manifest_check = verify_manifest_integrity(
-                result.output_dir,
-                repo_name=result.knowledge.repo_name,
-            )
-            if not manifest_check["ok"]:
-                raise ArtifactLoadError(
-                    "Manifest integrity check failed for --from-output: "
-                    + format_manifest_integrity_errors(manifest_check)
+            if not args.status and not args.handoff:
+                manifest_check = verify_manifest_integrity(
+                    result.output_dir,
+                    repo_name=result.knowledge.repo_name,
+                    validate_present_tracked=True,
                 )
+                if not manifest_check["ok"]:
+                    raise ArtifactLoadError(
+                        "Manifest integrity check failed for --from-output: "
+                        + format_manifest_integrity_errors(manifest_check)
+                        + _artifact_recovery_suffix(
+                            result,
+                            format_manifest_integrity_errors(manifest_check),
+                        )
+                    )
+                contract_targets = command_artifact_contracts(args)
+                contract_check = verify_artifact_contracts(
+                    result.output_dir,
+                    required_roots=contract_targets["required_roots"],
+                    related_artifacts=contract_targets["related_artifacts"],
+                )
+                if not contract_check["ok"]:
+                    raise ArtifactLoadError(
+                        "Artifact contract check failed for --from-output: "
+                        + format_artifact_contract_errors(contract_check)
+                        + _artifact_recovery_suffix(
+                            result,
+                            format_artifact_contract_errors(contract_check),
+                        )
+                    )
         except ArtifactLoadError as exc:
             raise SystemExit(str(exc)) from exc
     elif not args.repo:
@@ -489,6 +781,40 @@ def main() -> int:
         result = workflow.run()
 
     payload = result_payload(result)
+    if args.status or args.handoff:
+        manifest_check = verify_manifest_integrity(
+            result.output_dir,
+            repo_name=result.knowledge.repo_name,
+            validate_present_tracked=True,
+        )
+        summary, status_report, handoff_card = status_report_payload(result, manifest_check=manifest_check)
+        payload["status_report"] = status_report
+        payload["handoff_card"] = handoff_card
+        if args.status:
+            payload["summary"] = summary
+            payload["orchestration"] = summary.get("orchestration", {})
+            if args.json:
+                print_json(payload)
+            else:
+                print_status(payload)
+        else:
+            handoff_payload = {
+                "repo": payload["repo"],
+                "root": payload["root"],
+                "outputs": payload["outputs"],
+                "handoff_card": handoff_card,
+                "status_report": {
+                    "ok": status_report.get("ok"),
+                    "manifest_integrity": status_report.get("manifest_integrity"),
+                    "handoff_card_artifact": status_report.get("handoff_card_artifact"),
+                    "handoff_card_validation": status_report.get("handoff_card_validation"),
+                },
+            }
+            if args.json:
+                print_json(handoff_payload)
+            else:
+                print_handoff(handoff_payload)
+        return 0 if status_report["ok"] else 2
     trace = []
     impact = []
     answer = None
@@ -556,6 +882,34 @@ def main() -> int:
         )
     else:
         write_run_summary(result, payload=payload)
+
+    run_summary_path = result.output_dir / "run_summary.json"
+    if run_summary_path.exists():
+        try:
+            run_summary = json.loads(run_summary_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            run_summary = {}
+        if isinstance(run_summary, dict):
+            payload["summary"] = run_summary
+            orchestration = run_summary.get("orchestration")
+            if isinstance(orchestration, dict):
+                payload["orchestration"] = orchestration
+    handoff_card_path = result.output_dir / "handoff_card.json"
+    if handoff_card_path.exists():
+        try:
+            payload["handoff_card"] = json.loads(handoff_card_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            payload["handoff_card"] = build_handoff_card(
+                result,
+                payload=payload,
+                summary=payload.get("summary"),
+            )
+    else:
+        payload["handoff_card"] = build_handoff_card(
+            result,
+            payload=payload,
+            summary=payload.get("summary"),
+        )
 
     if args.json:
         print_json(payload)

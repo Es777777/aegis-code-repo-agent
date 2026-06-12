@@ -119,6 +119,26 @@ def parse_args() -> argparse.Namespace:
     doctor.add_argument("--llm", action="store_true")
     doctor.add_argument("--json", action="store_true")
 
+    status = sub.add_parser("status")
+    status.add_argument("repo", nargs="?")
+    status.add_argument("--from-output")
+    status.add_argument("--max-files", default="1500")
+    status.add_argument("--out", default="output/aegis")
+    status.add_argument("--include", action="append", default=[])
+    status.add_argument("--exclude", action="append", default=[])
+    status.add_argument("--no-cache", action="store_true")
+    status.add_argument("--json", action="store_true")
+
+    handoff = sub.add_parser("handoff")
+    handoff.add_argument("repo", nargs="?")
+    handoff.add_argument("--from-output")
+    handoff.add_argument("--max-files", default="1500")
+    handoff.add_argument("--out", default="output/aegis")
+    handoff.add_argument("--include", action="append", default=[])
+    handoff.add_argument("--exclude", action="append", default=[])
+    handoff.add_argument("--no-cache", action="store_true")
+    handoff.add_argument("--json", action="store_true")
+
     return parser.parse_args()
 
 
@@ -160,6 +180,10 @@ def main() -> int:
 
     if args.command == "analyze":
         return run(common, cwd=root)
+    if args.command == "status":
+        return run([*common, "--status"], cwd=root)
+    if args.command == "handoff":
+        return run([*common, "--handoff"], cwd=root)
     if args.command == "ask":
         command = [
             *common,

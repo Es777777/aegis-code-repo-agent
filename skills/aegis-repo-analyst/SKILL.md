@@ -11,11 +11,15 @@ Use this skill to run AEGIS against a local repository and answer questions from
 
 AEGIS is located in the parent project that contains `main.py` and the `aegis/` package. It is offline-capable by default; optional LLM answering requires `AEGIS_LLM_*` environment variables.
 
+For a competition or public walkthrough, use [docs/DEMO.md](../../docs/DEMO.md)
+as the default live demo script and [docs/RELEASE_CHECKLIST.md](../../docs/RELEASE_CHECKLIST.md)
+as the final release gate.
+
 ## Workflow
 
 1. Identify the target repository path.
 2. Run AEGIS analysis.
-3. Inspect `run_summary.json` first to see status, available artifacts, and next actions.
+3. Inspect `handoff_card.json` first to get the primary task, recommended action, reusable artifacts, and the best available investigation brief.
 4. Read the generated report or ask a RAG question.
 5. Cite evidence from `report.md`, `knowledge.json`, `rag_index.json`, `qa_answer.json`, or CLI output.
 
@@ -60,6 +64,7 @@ output/aegis/<repo-name>/
   architecture.mmd
   manifest.json
   run_summary.json
+  handoff_card.json
   qa_answer.json
   context_pack.md
   llm_prompt.md
@@ -67,9 +72,32 @@ output/aegis/<repo-name>/
 
 Summarize the important output paths for the user. When `run_summary.json`
 exists, treat it as the handoff index: check `status`, `next_actions`,
-`qa.context_safe_for_llm`, `evaluation.overall_score`, and
-`readiness.passed` before deciding whether the output is ready or needs another
-command.
+`orchestration.recommended_command`, `orchestration.can_reuse_for`,
+`orchestration.blocked_by`, `qa.context_safe_for_llm`,
+`evaluation.overall_score`, and `readiness.passed` before deciding whether the
+output is ready or needs another command.
+
+Prefer `handoff_card.json` as the default downstream-agent entrypoint. It
+already consolidates the recommended action, primary task, reusable artifact
+pointers, QA brief, and failure/remediation brief into one payload. Use
+`run_summary.json` when you need deeper orchestration detail or artifact
+contract diagnostics.
+
+When another agent only needs to inspect the handoff state, use:
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py handoff --from-output output\aegis\<repo-name> --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py status --from-output output\aegis\<repo-name> --json
+```
+
+Use `handoff` when another agent only needs the primary machine interface:
+trusted `handoff_card`, manifest-integrity result, and handoff-card validation.
+When `handoff_card.primary_task.recommended_command_line` is present, use that
+exact command as the default next step before inventing a new ask/eval/ready
+invocation.
+Use `status` when the agent also needs the full `summary`, `orchestration`,
+repair plan, and command-level reuse gates without generating new
+QA/eval/readiness outputs.
 
 ### Ask A Question With RAG
 
@@ -200,10 +228,15 @@ version, run configuration, repository identity, summary stats, and artifact
 inventory for a delivered analysis. Artifact entries include byte sizes and
 SHA256 hashes; readiness verifies required artifact integrity.
 
-AEGIS also writes `run_summary.json` after analysis and post-run commands. Use
-it as the first file for downstream orchestration: `status` tells whether the
-directory is only `analyzed`, `qa_checked`, `evaluated`, `ready`, or
-`needs_attention`, and `next_actions` says which command to run next.
+AEGIS also writes `handoff_card.json` and `run_summary.json` after analysis and
+post-run commands. Use `handoff_card.json` as the first file for downstream
+orchestration; it tells another agent the primary task, recommended action, QA
+brief, remediation brief, and reusable artifact paths in one place. Use
+`run_summary.json` as the deeper orchestration ledger: `status` tells whether
+the directory is only `analyzed`, `qa_checked`, `evaluated`, `ready`, or
+`needs_attention`, `next_actions` says which command to run next, and the
+`orchestration` object reports which commands can safely reuse the current
+directory versus which ones are blocked by missing artifact contracts.
 
 ### Serve HTML Report
 
@@ -259,7 +292,7 @@ When answering the user:
 
 - Prefer claims backed by file paths and line numbers.
 - Mention whether the answer came from offline RAG or LLM synthesis.
-- Inspect `run_summary.json` first when it exists, especially `status` and `next_actions`.
+- Inspect `handoff_card.json` first when it exists, then `run_summary.json` for deeper orchestration details.
 - Check `qa.required_context_satisfied`; if false, report missing or incomplete files and ask for a larger context budget.
 - If retrieval is weak, say what evidence is missing.
 - For route questions, include the CodeGraph trace when available.
