@@ -47,6 +47,17 @@ class ReportWriter:
         lines.append(f"- 总行数：{knowledge.stats.get('total_lines', 0)}")
         lines.append(f"- 缓存命中：{knowledge.stats.get('cache_hits', 0)}")
         lines.append(f"- 缓存未命中：{knowledge.stats.get('cache_misses', 0)}")
+        scan_stats = knowledge.stats.get("scan", {})
+        if isinstance(scan_stats, dict):
+            include = scan_stats.get("include") or []
+            exclude = scan_stats.get("exclude") or []
+            skipped = scan_stats.get("skipped") or {}
+            if include:
+                lines.append(f"- Include 范围：{', '.join(f'`{item}`' for item in include)}")
+            if exclude:
+                lines.append(f"- Exclude 范围：{', '.join(f'`{item}`' for item in exclude)}")
+            if isinstance(skipped, dict) and skipped:
+                lines.append(f"- 跳过文件：{self._dict_summary(skipped)}")
         lines.append(f"- 主要语言：{self._language_summary(knowledge)}")
         lines.append(f"- 框架线索：{', '.join(knowledge.frameworks) if knowledge.frameworks else '未识别'}")
         lines.append(f"- 入口候选：{', '.join(knowledge.entrypoints[:8]) if knowledge.entrypoints else '未识别'}")

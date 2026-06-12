@@ -24,21 +24,31 @@ class RepoScanner:
         self.max_files = max_files
         self.include = include or []
         self.exclude = exclude or []
+        self.skipped: Counter[str] = Counter()
 
     def scan(self, cached_records: dict[str, FileRecord] | None = None) -> list[FileRecord]:
         cached_records = cached_records or {}
         files: list[FileRecord] = []
         for path in self.root.rglob("*"):
             if len(files) >= self.max_files:
+                self.skipped["max_files"] += 1
                 break
-            if not path.is_file() or is_ignored(path) or is_probably_binary(path):
+            if not path.is_file():
+                continue
+            if is_ignored(path):
+                self.skipped["ignored_dir"] += 1
+                continue
+            if is_probably_binary(path):
+                self.skipped["binary"] += 1
                 continue
             relative = relpath(path, self.root)
             if not self._matches_scope(relative):
+                self.skipped["scope"] += 1
                 continue
             try:
                 content_hash = file_sha256(path)
             except OSError:
+                self.skipped["hash_error"] += 1
                 continue
             cached = cached_records.get(relative)
             if cached and cached.content_hash == content_hash and cached.size == path.stat().st_size:
@@ -48,6 +58,7 @@ class RepoScanner:
             try:
                 text = read_text(path)
             except (OSError, UnicodeDecodeError):
+                self.skipped["read_error"] += 1
                 continue
 
             language = detect_language(path)
@@ -87,14 +98,19 @@ class RepoScanner:
         candidate = pattern.replace("\\", "/")
         return fnmatch(normalized, candidate) or fnmatch(Path(normalized).name, candidate)
 
-    @staticmethod
-    def stats(files: list[FileRecord]) -> dict[str, object]:
+    def stats(self, files: list[FileRecord]) -> dict[str, object]:
         languages = Counter(item.language for item in files)
         total_lines = sum(item.lines for item in files)
         return {
             "file_count": len(files),
             "total_lines": total_lines,
             "languages": dict(languages.most_common()),
+            "scan": {
+                "max_files": self.max_files,
+                "include": self.include,
+                "exclude": self.exclude,
+                "skipped": dict(self.skipped),
+            },
         }
 
     @staticmethod

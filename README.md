@@ -83,6 +83,8 @@ python main.py <repo-path> --max-files 2000
 python main.py <repo-path> --include "src/**/*.py" --include "*.toml" --exclude "*_test.py"
 ```
 
+扫描范围和跳过原因会写入 `knowledge.json` 的 `stats.scan`，报告摘要也会显示 include/exclude 与跳过文件统计。
+
 禁用缓存：
 
 ```powershell

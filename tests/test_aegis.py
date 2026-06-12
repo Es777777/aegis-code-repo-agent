@@ -78,6 +78,10 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertIn("repositories/user_repository.py", paths)
         self.assertNotIn("app.py", paths)
         self.assertNotIn("pyproject.toml", paths)
+        scan_stats = knowledge.stats["scan"]
+        self.assertEqual(scan_stats["include"], ["*.py", "services/*.py"])
+        self.assertEqual(scan_stats["exclude"], ["app.py"])
+        self.assertGreaterEqual(scan_stats["skipped"].get("scope", 0), 1)
 
 
 class WorkflowTest(unittest.TestCase):
@@ -94,6 +98,22 @@ class WorkflowTest(unittest.TestCase):
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
+
+    def test_report_includes_scan_scope_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "aegis"
+            result = AegisWorkflow(
+                SAMPLE,
+                output_root=out,
+                max_files=100,
+                include=["*.py"],
+                exclude=["app.py"],
+                use_cache=False,
+            ).run()
+            report = (result.output_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("Include 范围", report)
+            self.assertIn("Exclude 范围", report)
+            self.assertIn("跳过文件", report)
 
 
 class RAGRecallTest(unittest.TestCase):
