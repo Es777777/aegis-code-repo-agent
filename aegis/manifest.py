@@ -32,10 +32,21 @@ def build_manifest(
     use_cache: bool,
     llm_enabled: bool,
     events_count: int,
+    post_run: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     knowledge = result.knowledge
     output_dir = result.output_dir
     artifacts = _artifact_inventory(output_dir)
+    run = {
+        "max_files": max_files,
+        "include": include,
+        "exclude": exclude,
+        "use_cache": use_cache,
+        "llm_enabled": llm_enabled,
+        "events_count": events_count,
+    }
+    if post_run:
+        run["post_run"] = post_run
     return {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "aegis_version": __version__,
@@ -45,14 +56,7 @@ def build_manifest(
             "root": knowledge.root,
             "git": _git_info(Path(knowledge.root)),
         },
-        "run": {
-            "max_files": max_files,
-            "include": include,
-            "exclude": exclude,
-            "use_cache": use_cache,
-            "llm_enabled": llm_enabled,
-            "events_count": events_count,
-        },
+        "run": run,
         "stats": {
             "file_count": knowledge.stats.get("file_count", 0),
             "total_lines": knowledge.stats.get("total_lines", 0),

@@ -28,7 +28,7 @@ from aegis.rag.index import RAGIndex, RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
 from aegis.rag.retriever import RAGRetriever
 from aegis.readiness import ReadinessAssessor
-from aegis.utils import file_sha256
+from aegis.utils import file_sha256, write_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -237,6 +237,18 @@ class UserController {
         self.assertTrue(any(node.name == "GET" and node.kind == "function" for node in trace))
 
 
+class UtilsTest(unittest.TestCase):
+    def test_write_json_uses_ascii_safe_escapes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "payload.json"
+            value = "C:\\Users\\asd\\Desktop\\火山杯\\examples"
+            write_json(path, {"root": value})
+            text = path.read_text(encoding="utf-8")
+            self.assertTrue(text.isascii())
+            self.assertIn("\\u706b\\u5c71\\u676f", text)
+            self.assertEqual(json.loads(text)["root"], value)
+
+
 class WorkflowTest(unittest.TestCase):
     def test_workflow_writes_outputs_and_uses_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -255,6 +267,7 @@ class WorkflowTest(unittest.TestCase):
             manifest = json.loads((second.output_dir / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["schema_version"], "1.1")
             self.assertEqual(manifest["repo"]["name"], "sample_repo")
+            self.assertNotIn("post_run", manifest["run"])
             self.assertTrue(manifest["artifacts"]["knowledge.json"]["exists"])
             self.assertEqual(
                 manifest["artifacts"]["knowledge.json"]["sha256"],
@@ -1104,6 +1117,13 @@ class CLITest(unittest.TestCase):
             self.assertTrue(manifest["artifacts"]["qa_answer.json"]["exists"])
             self.assertTrue(manifest["artifacts"]["context_pack.md"]["exists"])
             self.assertTrue(manifest["artifacts"]["llm_prompt.md"]["exists"])
+            self.assertEqual(manifest["run"]["post_run"]["ask"], qa_artifact["question"])
+            self.assertEqual(manifest["run"]["post_run"]["top_k"], 2)
+            self.assertEqual(manifest["run"]["post_run"]["context_chars"], 48000)
+            self.assertEqual(
+                manifest["run"]["post_run"]["context_files"],
+                ["src/timing/timing_model.py"],
+            )
             context_blocks = payload["qa"]["context_pack"]["blocks"]
             self.assertTrue(context_blocks)
             self.assertTrue(any("class StandaloneEntrypoint" in block["content"] for block in context_blocks))

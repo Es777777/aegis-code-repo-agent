@@ -125,5 +125,6 @@ Manifest JSON fields:
 - `aegis_version`: installed AEGIS package version.
 - `repo`: analyzed repository name, root, and git state when available.
 - `run`: scan and LLM configuration used for the analysis.
+- `run.post_run`: ask/ready/eval/trace/impact command context when post-run artifacts were produced.
 - `stats`: file, CodeGraph, RAG, and finding summaries.
 - `artifacts`: artifact paths, existence, byte sizes, and SHA256 digests.

@@ -525,6 +525,11 @@ Each existing artifact entry includes its path, existence flag, byte size, and
 SHA256 digest. The readiness gate verifies required artifact sizes and hashes so
 stale or tampered outputs are caught before a demo or submission.
 
+When a post-run command creates reusable artifacts, `manifest.run.post_run`
+records the command context: ask question, ready smoke question, `top_k`,
+`context_chars`, forced `context_files`, trace route, impact files, and
+evaluation/readiness thresholds.
+
 ```text
 output/aegis/<repo-name>/manifest.json
 ```

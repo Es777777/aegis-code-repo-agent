@@ -370,6 +370,7 @@ commands such as evaluation, impact analysis, or readiness checks. It records:
 - `aegis_version`
 - repository name/root/git state
 - run configuration
+- optional `run.post_run` command context for ask, ready smoke, trace, impact, or evaluation commands
 - repository, CodeGraph, RAG, and finding statistics
 - artifact paths, existence, byte sizes, and SHA256 digests
 

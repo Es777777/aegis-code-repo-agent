@@ -332,8 +332,29 @@ def refresh_manifest(result: Any, args: argparse.Namespace) -> None:
         use_cache=not args.no_cache,
         llm_enabled=bool(args.llm),
         events_count=_events_count(result.output_dir),
+        post_run=post_run_manifest(args),
     )
     write_json(result.output_dir / "manifest.json", manifest)
+
+
+def post_run_manifest(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "from_output": args.from_output,
+        "ask": args.ask,
+        "ready_ask": args.ready_ask,
+        "top_k": args.top_k,
+        "context_chars": args.context_chars,
+        "context_files": list(args.context_file or []),
+        "trace_interface": args.trace_interface,
+        "impact": bool(args.impact or args.impact_file),
+        "impact_files": list(args.impact_file or []),
+        "impact_depth": args.impact_depth,
+        "eval": bool(args.eval or args.eval_suite or args.eval_fail_under is not None or args.ready),
+        "eval_suite": args.eval_suite,
+        "eval_fail_under": args.eval_fail_under,
+        "ready": bool(args.ready),
+        "ready_fail_under": args.ready_fail_under,
+    }
 
 
 def _events_count(output_dir: Path) -> int:
