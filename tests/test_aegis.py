@@ -70,6 +70,23 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertTrue(answer.context_pack.blocks)
         self.assertTrue(any(block.chunk_kind == "source" for block in answer.context_pack.blocks))
 
+    def test_qa_agent_adds_codegraph_trace_for_route_questions(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer("POST /users 的调用链路是什么？")
+        self.assertIsNotNone(answer.graph_context)
+        assert answer.graph_context is not None
+        self.assertEqual(answer.graph_context["route"], "/users")
+        names = [node["name"] for node in answer.graph_context["nodes"]]
+        self.assertIn("POST /users", names)
+        self.assertIn("UserService", names)
+        self.assertIn("UserRepository", names)
+        self.assertIn("CodeGraph trace", answer.answer)
+        source_paths = answer.context_pack.source_paths()
+        self.assertIn("app.py", source_paths)
+        self.assertIn("services/user_service.py", source_paths)
+        self.assertIn("repositories/user_repository.py", source_paths)
+
     def test_include_exclude_scope_controls_scanned_files(self) -> None:
         knowledge = KnowledgeBuilder(
             SAMPLE,
@@ -421,6 +438,39 @@ class CLITest(unittest.TestCase):
                 for line in result["source_excerpt"]
             )
             self.assertIn("class StandaloneEntrypoint", excerpts)
+
+    def test_ask_json_includes_graph_context_for_route_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--ask",
+                    "POST /users 的调用链路是什么？",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            graph_context = payload["qa"]["graph_context"]
+            self.assertEqual(graph_context["route"], "/users")
+            names = {node["name"] for node in graph_context["nodes"]}
+            self.assertIn("POST /users", names)
+            self.assertIn("UserRepository", names)
+            source_paths = payload["qa"]["context_pack"]["source_paths"]
+            self.assertIn("repositories/user_repository.py", source_paths)
 
     def test_trace_json_output_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

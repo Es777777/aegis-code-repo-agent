@@ -182,6 +182,7 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "question": answer.question,
         "answer": answer.answer,
         "used_llm": answer.used_llm,
+        "graph_context": answer.graph_context,
         "context_pack": answer.context_pack.to_dict(),
         "results": [retrieval_payload(agent, item) for item in answer.results],
     }

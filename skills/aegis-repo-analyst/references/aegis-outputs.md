@@ -57,6 +57,7 @@ python main.py <repo-path> --ask "Explain /users" --llm
 
 Ask JSON fields:
 
+- `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
 - `qa.context_pack.blocks[*].content`: line-numbered source code blocks for the LLM.
 - `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.

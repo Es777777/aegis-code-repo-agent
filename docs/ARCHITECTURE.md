@@ -211,10 +211,17 @@ Context pack fields:
 
 - `query`
 - `max_chars` and `used_chars`
+- `source_paths`, the real source files included in the prompt context
 - `blocks[*].path`
 - `blocks[*].start_line` / `end_line`
 - `blocks[*].content` with line-numbered source
 - `blocks[*].retrieved_from` to show which semantic chunk led to the source
+
+For route questions, `RepositoryQAAgent` also emits `qa.graph_context` from
+`CodeGraphQuery.trace_interface(route)`. Paths from that trace are passed to
+the retriever as required context, so handler, service, repository, data, and
+config files can be included in `qa.context_pack.source_paths` even when the
+plain keyword score would not rank them high enough.
 
 CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
 uses `AEGIS_RAG_CONTEXT_CHARS`.

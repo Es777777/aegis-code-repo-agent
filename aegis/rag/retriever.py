@@ -201,6 +201,7 @@ class RAGRetriever:
         *,
         top_k: int = 8,
         max_chars: int = 12000,
+        required_paths: list[str] | None = None,
     ) -> RAGContextPack:
         candidates = self.search(query, top_k=max(top_k * 4, top_k + 12))
         context_results = self.file_context(
@@ -208,6 +209,8 @@ class RAGRetriever:
             max_paths=max(1, top_k),
             max_chunks=max(top_k * 4, top_k + 6),
         )
+        if required_paths:
+            context_results.extend(self._required_path_results(required_paths))
         blocks: list[RAGContextBlock] = []
         seen: set[str] = set()
         used_chars = 0
@@ -254,6 +257,20 @@ class RAGRetriever:
             blocks=blocks,
             dropped_blocks=dropped,
         )
+
+    def _required_path_results(self, paths: list[str]) -> list[RetrievalResult]:
+        results: list[RetrievalResult] = []
+        for path in dict.fromkeys(paths):
+            for idx, chunk in enumerate(self.source_chunks_by_path.get(path, [])):
+                results.append(
+                    RetrievalResult(
+                        chunk=chunk,
+                        score=max(0.45 - idx * 0.03, 0.2),
+                        matched_terms=[],
+                        retrieved_from=f"required_path:{path}",
+                    )
+                )
+        return results
 
     def _context_chunk(self, chunk: RAGChunk) -> RAGChunk:
         if chunk.kind == "source":
