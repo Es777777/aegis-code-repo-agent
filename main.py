@@ -16,6 +16,7 @@ from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import QAAnswer, RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
+from aegis.readiness import ReadinessAssessor
 from aegis.server import serve
 from aegis.utils import write_json
 
@@ -65,6 +66,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval", action="store_true", help="Run built-in or custom RAG/CodeGraph evaluation")
     parser.add_argument("--eval-suite", help="Evaluation suite JSON file")
     parser.add_argument("--eval-fail-under", type=float, help="Fail when overall_score is below this 0..1 threshold")
+    parser.add_argument("--ready", action="store_true", help="Run readiness checks and write readiness.json")
+    parser.add_argument("--ready-fail-under", type=float, default=0.75, help="Readiness evaluation score threshold")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     return parser.parse_args()
 
@@ -80,6 +83,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "rag_index": str(output_dir / "rag_index.json"),
         "evaluation": str(output_dir / "evaluation.json"),
         "impact": str(output_dir / "impact.json"),
+        "readiness": str(output_dir / "readiness.json"),
     }
 
 
@@ -223,6 +227,8 @@ def main() -> int:
     args = parse_args()
     if args.eval_fail_under is not None and not 0 <= args.eval_fail_under <= 1:
         raise SystemExit("--eval-fail-under must be between 0 and 1, for example 0.85")
+    if not 0 <= args.ready_fail_under <= 1:
+        raise SystemExit("--ready-fail-under must be between 0 and 1, for example 0.85")
     if args.context_chars <= 0:
         raise SystemExit("--context-chars must be a positive integer")
     if args.impact_depth < 0:
@@ -295,7 +301,7 @@ def main() -> int:
         )
         payload["qa"] = qa_payload(qa, answer)
 
-    should_eval = args.eval or args.eval_suite or args.eval_fail_under is not None
+    should_eval = args.eval or args.eval_suite or args.eval_fail_under is not None or args.ready
     if should_eval:
         if rag_index is None:
             rag_index = get_rag_index(result, prefer_saved=bool(args.from_output))
@@ -304,10 +310,26 @@ def main() -> int:
         write_json(result.output_dir / "evaluation.json", evaluation)
         payload["evaluation"] = evaluation
         payload["quality_gate"] = quality_gate_payload(evaluation["metrics"], args.eval_fail_under)
+    if args.ready:
+        doctor_payload = Doctor(
+            repo=Path(result.knowledge.root),
+            output_root=Path(args.out),
+            llm_config=LLMConfig.from_env(enabled=args.llm),
+        ).run()
+        readiness = ReadinessAssessor(
+            result,
+            doctor_payload=doctor_payload,
+            evaluation_payload=payload.get("evaluation"),
+            threshold=args.ready_fail_under,
+        ).run()
+        write_json(result.output_dir / "readiness.json", readiness)
+        payload["readiness"] = readiness
 
     if args.json:
         print_json(payload)
-        return 0 if payload.get("quality_gate", {}).get("passed", True) else 2
+        passed = payload.get("quality_gate", {}).get("passed", True)
+        passed = passed and payload.get("readiness", {}).get("passed", True)
+        return 0 if passed else 2
 
     print(f"AEGIS analysis complete: {result.output_dir}")
     for key in ("report", "html", "mermaid", "knowledge", "findings", "rag_index"):
@@ -368,6 +390,16 @@ def main() -> int:
             )
             if not gate["passed"]:
                 return 2
+    if args.ready:
+        readiness = payload["readiness"]
+        print("\nAEGIS readiness:")
+        print(f"- status: {'passed' if readiness['passed'] else 'failed'}")
+        print(f"- threshold: {readiness['threshold']:.2%}")
+        for check in readiness["checks"]:
+            print(f"- {check['status']}: {check['name']} - {check['message']}")
+        print(f"- readiness: {payload['outputs']['readiness']}")
+        if not readiness["passed"]:
+            return 2
     return 0
 
 

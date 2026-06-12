@@ -249,3 +249,31 @@ Output:
 - `impact.affected_symbols`
 - `impact.nodes`
 - `output/aegis/<repo-name>/impact.json`
+
+## Readiness Gate
+
+Readiness assessment is the final quality wrapper around the analysis system.
+It aggregates:
+
+- Doctor environment checks
+- Required output artifacts
+- Repository knowledge health
+- CodeGraph node/edge health
+- RAG source context availability
+- Evaluation score threshold
+
+CLI:
+
+```powershell
+python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
+python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
+```
+
+Output:
+
+- `readiness.passed`
+- `readiness.checks`
+- `readiness.summary`
+- `output/aegis/<repo-name>/readiness.json`
+
+The command returns exit code `2` when readiness fails.

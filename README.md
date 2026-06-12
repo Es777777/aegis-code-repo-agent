@@ -408,3 +408,31 @@ output/aegis/<repo-name>/impact.json
 
 JSON consumers should read `impact.affected_files`, `impact.affected_symbols`,
 and `impact.nodes`.
+
+## Readiness Gate
+
+Use `--ready` before demos, submissions, or automated evaluation. It combines
+environment checks, required artifact checks, knowledge/CodeGraph/RAG health,
+and evaluation metrics into one machine-readable verdict.
+
+```powershell
+python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
+python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
+```
+
+The command writes:
+
+```text
+output/aegis/<repo-name>/readiness.json
+```
+
+Important JSON fields:
+
+- `readiness.passed`
+- `readiness.threshold`
+- `readiness.checks[*].name`
+- `readiness.checks[*].status`
+- `readiness.summary`
+
+`--ready` returns exit code `2` when any readiness check fails, which makes it
+suitable for CI and competition scripts.

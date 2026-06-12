@@ -42,3 +42,6 @@ jobs:
 
       - name: EDA repo evaluation gate
         run: python main.py examples/eda_repo --max-files 100 --no-cache --eval --eval-fail-under 1.0 --json
+
+      - name: Readiness gate
+        run: python main.py examples/sample_repo --max-files 100 --no-cache --ready --ready-fail-under 1.0 --json

@@ -16,6 +16,7 @@ Files:
 - `report.html`: browsable report.
 - `architecture.mmd`: Mermaid diagram.
 - `impact.json`: optional CodeGraph impact analysis output created by `--impact`.
+- `readiness.json`: optional readiness gate output created by `--ready`.
 
 CodeGraph node kinds:
 
@@ -48,6 +49,7 @@ Useful CLI forms:
 python main.py <repo-path>
 python main.py <repo-path> --trace-interface /users
 python main.py <repo-path> --impact --impact-file services/user_service.py --json
+python main.py <repo-path> --ready --ready-fail-under 1.0 --json
 python main.py <repo-path> --ask "Where is user creation implemented?"
 python main.py <repo-path> --ask "Explain /users" --llm
 ```
@@ -59,3 +61,10 @@ Impact JSON fields:
 - `affected_files`: unique file paths reached by reverse CodeGraph traversal.
 - `affected_symbols`: affected class/function/interface/data nodes.
 - `nodes`: full impacted CodeGraph node payloads.
+
+Readiness JSON fields:
+
+- `passed`: final readiness verdict.
+- `threshold`: evaluation score threshold used by the gate.
+- `checks`: named checks with `ok`, `warning`, or `error` status.
+- `summary`: names grouped by status.

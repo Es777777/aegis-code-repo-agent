@@ -91,6 +91,18 @@ def parse_args() -> argparse.Namespace:
     eval_cmd.add_argument("--no-cache", action="store_true")
     eval_cmd.add_argument("--json", action="store_true")
 
+    ready = sub.add_parser("ready")
+    ready.add_argument("repo", nargs="?")
+    ready.add_argument("--from-output")
+    ready.add_argument("--max-files", default="1500")
+    ready.add_argument("--out", default="output/aegis")
+    ready.add_argument("--include", action="append", default=[])
+    ready.add_argument("--exclude", action="append", default=[])
+    ready.add_argument("--suite")
+    ready.add_argument("--fail-under", default="0.75")
+    ready.add_argument("--no-cache", action="store_true")
+    ready.add_argument("--json", action="store_true")
+
     doctor = sub.add_parser("doctor")
     doctor.add_argument("repo", nargs="?")
     doctor.add_argument("--out", default="output/aegis")
@@ -162,6 +174,11 @@ def main() -> int:
             command.extend(["--eval-suite", args.suite])
         if args.fail_under:
             command.extend(["--eval-fail-under", args.fail_under])
+        return run(command, cwd=root)
+    if args.command == "ready":
+        command = [*common, "--ready", "--ready-fail-under", str(args.fail_under)]
+        if args.suite:
+            command.extend(["--eval-suite", args.suite])
         return run(command, cwd=root)
     raise SystemExit(f"Unknown command: {args.command}")
 

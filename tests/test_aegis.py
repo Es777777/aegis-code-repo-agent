@@ -621,6 +621,67 @@ class CLITest(unittest.TestCase):
             evaluation_path = Path(payload["outputs"]["evaluation"])
             self.assertTrue(evaluation_path.exists())
 
+    def test_ready_json_output_is_machine_readable_and_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--ready",
+                    "--ready-fail-under",
+                    "1.0",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertIn("readiness", payload)
+            self.assertTrue(payload["readiness"]["passed"])
+            check_names = {check["name"] for check in payload["readiness"]["checks"]}
+            self.assertGreaterEqual(
+                check_names,
+                {"doctor", "artifacts", "knowledge", "codegraph", "rag", "evaluation"},
+            )
+            self.assertEqual(payload["readiness"]["threshold"], 1.0)
+            self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
+
+    def test_skill_wrapper_ready_from_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
+                    "ready",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--fail-under",
+                    "1.0",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertTrue(payload["readiness"]["passed"])
+
     def test_eval_quality_gate_passes_when_score_meets_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             completed = subprocess.run(

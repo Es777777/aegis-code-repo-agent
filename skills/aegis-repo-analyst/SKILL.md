@@ -131,6 +131,17 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --fail-un
 
 Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`. `--fail-under` turns the score into a hard quality gate for CI or competition scripts.
 
+### Run Readiness Gate
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py ready --from-output output\aegis\<repo-name> --fail-under 1.0 --json
+```
+
+Use this before demos or submissions. It aggregates doctor checks, required
+artifacts, knowledge/CodeGraph/RAG health, and evaluation score into
+`readiness.json`. Treat `readiness.passed=false` as not ready.
+
 ### Serve HTML Report
 
 ```powershell
