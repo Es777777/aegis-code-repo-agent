@@ -67,6 +67,18 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("--eval-fail-under")
     trace.add_argument("--json", action="store_true")
 
+    impact = sub.add_parser("impact")
+    impact.add_argument("repo", nargs="?")
+    impact.add_argument("--from-output")
+    impact.add_argument("--path", action="append", default=[])
+    impact.add_argument("--depth", default="3")
+    impact.add_argument("--max-files", default="1500")
+    impact.add_argument("--out", default="output/aegis")
+    impact.add_argument("--include", action="append", default=[])
+    impact.add_argument("--exclude", action="append", default=[])
+    impact.add_argument("--no-cache", action="store_true")
+    impact.add_argument("--json", action="store_true")
+
     eval_cmd = sub.add_parser("eval")
     eval_cmd.add_argument("repo", nargs="?")
     eval_cmd.add_argument("--from-output")
@@ -139,6 +151,11 @@ def main() -> int:
         return run(command, cwd=root)
     if args.command == "trace":
         return run([*common, "--trace-interface", args.route], cwd=root)
+    if args.command == "impact":
+        command = [*common, "--impact", "--impact-depth", str(args.depth)]
+        for path in args.path:
+            command.extend(["--impact-file", path])
+        return run(command, cwd=root)
     if args.command == "eval":
         command = [*common, "--eval"]
         if args.suite:

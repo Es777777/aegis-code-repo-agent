@@ -53,8 +53,10 @@ class CodeGraphBuilder:
         call_graph: dict[str, list[str]],
         entrypoints: list[str],
         configs: list[str],
+        root: Path | None = None,
     ) -> None:
         self.files = files
+        self.root = root
         self.dependency_graph = dependency_graph
         self.call_graph = call_graph
         self.entrypoints = entrypoints
@@ -285,11 +287,14 @@ class CodeGraphBuilder:
             tokens.update(piece for piece in stem.split("_") if piece)
         return any(token in DATA_PATH_HINTS for token in tokens)
 
-    @staticmethod
-    def _line_for(record: FileRecord, needle: str) -> int | None:
+    def _line_for(self, record: FileRecord, needle: str) -> int | None:
         for ev in record.evidence:
             if needle and needle in ev.snippet:
                 return ev.line
+        if needle:
+            source_line = self._source_line_for(record, needle)
+            if source_line is not None:
+                return source_line
         return record.evidence[0].line if record.evidence else None
 
     def _nearest_symbol(self, record: FileRecord, line: int | None) -> str | None:
@@ -313,12 +318,14 @@ class CodeGraphBuilder:
             return sorted(before)[0][1]
         return record.symbols[0]
 
-    @staticmethod
-    def _evidence(record: FileRecord, needle: str | None = None) -> Evidence:
+    def _evidence(self, record: FileRecord, needle: str | None = None) -> Evidence:
         if needle:
             for ev in record.evidence:
                 if needle in ev.snippet:
                     return ev
+            source_match = self._source_evidence_for(record, needle)
+            if source_match:
+                return source_match
         if record.evidence:
             return record.evidence[0]
         return Evidence(
@@ -328,6 +335,29 @@ class CodeGraphBuilder:
             confidence=0.55,
             source="codegraph",
         )
+
+    def _source_line_for(self, record: FileRecord, needle: str) -> int | None:
+        evidence = self._source_evidence_for(record, needle)
+        return evidence.line if evidence else None
+
+    def _source_evidence_for(self, record: FileRecord, needle: str) -> Evidence | None:
+        if self.root is None:
+            return None
+        path = self.root / record.path
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return None
+        for idx, line in enumerate(lines, start=1):
+            if needle in line:
+                return Evidence(
+                    path=record.path,
+                    line=idx,
+                    snippet=line.strip()[:220],
+                    confidence=0.85,
+                    source="codegraph-source",
+                )
+        return None
 
 
 class CodeGraphQuery:

@@ -15,6 +15,7 @@ Files:
 - `report.md`: human-readable report.
 - `report.html`: browsable report.
 - `architecture.mmd`: Mermaid diagram.
+- `impact.json`: optional CodeGraph impact analysis output created by `--impact`.
 
 CodeGraph node kinds:
 
@@ -46,6 +47,15 @@ Useful CLI forms:
 ```powershell
 python main.py <repo-path>
 python main.py <repo-path> --trace-interface /users
+python main.py <repo-path> --impact --impact-file services/user_service.py --json
 python main.py <repo-path> --ask "Where is user creation implemented?"
 python main.py <repo-path> --ask "Explain /users" --llm
 ```
+
+Impact JSON fields:
+
+- `source`: `explicit` or `git_diff`.
+- `input_paths`: files used as impact roots.
+- `affected_files`: unique file paths reached by reverse CodeGraph traversal.
+- `affected_symbols`: affected class/function/interface/data nodes.
+- `nodes`: full impacted CodeGraph node payloads.

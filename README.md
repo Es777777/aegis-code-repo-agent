@@ -375,3 +375,36 @@ Downstream agents should consume `qa.context_pack.blocks[*].content` directly
 when constructing LLM prompts. The LLM QA path already uses this same context
 pack, so the model receives real repository file content rather than file names
 or symbolic summaries alone.
+
+## Change Impact Analysis
+
+AEGIS can map changed files back through CodeGraph to affected files, symbols,
+interfaces, and data nodes. This is useful when an agent needs to answer
+"what does this change affect?" without rereading the whole repository.
+
+Explicit files:
+
+```powershell
+python main.py examples\sample_repo --impact --impact-file services/user_service.py --json
+```
+
+Use existing artifacts:
+
+```powershell
+python main.py --from-output output\aegis\sample_repo --impact --impact-file services/user_service.py --json
+```
+
+Use recorded Git diff files from the analysis result:
+
+```powershell
+python main.py examples\sample_repo --impact --json
+```
+
+The result is also written to:
+
+```text
+output/aegis/<repo-name>/impact.json
+```
+
+JSON consumers should read `impact.affected_files`, `impact.affected_symbols`,
+and `impact.nodes`.

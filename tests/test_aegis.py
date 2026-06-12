@@ -48,6 +48,8 @@ class KnowledgeBuilderTest(unittest.TestCase):
         names = [node.name for node in trace]
         self.assertTrue(any("/users" in name for name in names))
         self.assertIn("app.py", names)
+        users = next(node for node in trace if node.kind == "interface" and "/users" in node.name)
+        self.assertEqual(users.line, 14)
 
     def test_rag_retrieves_repository_context(self) -> None:
         knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
@@ -435,6 +437,45 @@ class CLITest(unittest.TestCase):
             names = [node["name"] for node in payload["trace"]["nodes"]]
             self.assertTrue(any("/users" in name for name in names))
 
+    def test_impact_json_output_is_machine_readable_and_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--impact",
+                    "--impact-file",
+                    "services/user_service.py",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertIn("impact", payload)
+            self.assertEqual(payload["impact"]["source"], "explicit")
+            self.assertEqual(payload["impact"]["input_paths"], ["services/user_service.py"])
+            affected_files = set(payload["impact"]["affected_files"])
+            self.assertIn("services/user_service.py", affected_files)
+            self.assertIn("app.py", affected_files)
+            affected_names = {node["name"] for node in payload["impact"]["nodes"]}
+            self.assertIn("UserService", affected_names)
+            users = next(node for node in payload["impact"]["nodes"] if node["name"] == "POST /users")
+            self.assertEqual(users["line"], 14)
+            impact_path = Path(payload["outputs"]["impact"])
+            self.assertTrue(impact_path.exists())
+
     def test_cli_include_exclude_scope_changes_scan_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             completed = subprocess.run(
@@ -522,6 +563,34 @@ class CLITest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["repo"], "eda_repo")
+
+    def test_skill_wrapper_impact_from_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
+                    "impact",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--path",
+                    "services/user_service.py",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertIn("impact", payload)
+            self.assertIn("app.py", set(payload["impact"]["affected_files"]))
+            users = next(node for node in payload["impact"]["nodes"] if node["name"] == "POST /users")
+            self.assertEqual(users["line"], 14)
 
     def test_eval_json_output_is_machine_readable_and_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

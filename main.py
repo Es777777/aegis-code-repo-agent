@@ -46,6 +46,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=config.serve_port, help="Report server port")
     parser.add_argument("--doctor", action="store_true", help="Run environment and configuration checks")
     parser.add_argument("--trace-interface", help="Trace an interface route, for example /users")
+    parser.add_argument("--impact", action="store_true", help="Run CodeGraph impact analysis for changed files")
+    parser.add_argument(
+        "--impact-file",
+        action="append",
+        default=[],
+        help="Changed file path to analyze; repeatable. Defaults to git diff changed files.",
+    )
+    parser.add_argument("--impact-depth", type=int, default=3, help="Maximum reverse CodeGraph depth for --impact")
     parser.add_argument("--ask", help="Ask the repository with the RAG agent")
     parser.add_argument("--top-k", type=int, default=8, help="Number of RAG retrieval results")
     parser.add_argument(
@@ -71,6 +79,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "findings": str(output_dir / "findings.json"),
         "rag_index": str(output_dir / "rag_index.json"),
         "evaluation": str(output_dir / "evaluation.json"),
+        "impact": str(output_dir / "impact.json"),
     }
 
 
@@ -102,6 +111,40 @@ def trace_payload(route: str, trace: list[Any]) -> dict[str, Any]:
             }
             for node in trace
         ],
+    }
+
+
+def node_payload(node: Any) -> dict[str, Any]:
+    return {
+        "id": node.id,
+        "kind": node.kind,
+        "name": node.name,
+        "path": node.path,
+        "line": node.line,
+        "language": node.language,
+        "metadata": node.metadata,
+    }
+
+
+def impact_payload(paths: list[str], impact: list[Any], *, depth: int, source: str) -> dict[str, Any]:
+    affected_files = list(dict.fromkeys(node.path for node in impact if node.path))
+    affected_symbols = [
+        {
+            "kind": node.kind,
+            "name": node.name,
+            "path": node.path,
+            "line": node.line,
+        }
+        for node in impact
+        if node.kind in {"class", "function", "interface", "data_model"}
+    ]
+    return {
+        "source": source,
+        "depth": depth,
+        "input_paths": paths,
+        "affected_files": affected_files,
+        "affected_symbols": affected_symbols,
+        "nodes": [node_payload(node) for node in impact],
     }
 
 
@@ -182,6 +225,8 @@ def main() -> int:
         raise SystemExit("--eval-fail-under must be between 0 and 1, for example 0.85")
     if args.context_chars <= 0:
         raise SystemExit("--context-chars must be a positive integer")
+    if args.impact_depth < 0:
+        raise SystemExit("--impact-depth must be zero or greater")
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
@@ -219,6 +264,7 @@ def main() -> int:
 
     payload = result_payload(result)
     trace = []
+    impact = []
     answer = None
     qa = None
     rag_index = None
@@ -226,6 +272,14 @@ def main() -> int:
         query = CodeGraphQuery(result.knowledge.code_graph)
         trace = query.trace_interface(args.trace_interface)
         payload["trace"] = trace_payload(args.trace_interface, trace)
+    should_impact = args.impact or bool(args.impact_file)
+    if should_impact:
+        paths = list(dict.fromkeys(args.impact_file or result.knowledge.changed_files))
+        source = "explicit" if args.impact_file else "git_diff"
+        query = CodeGraphQuery(result.knowledge.code_graph)
+        impact = query.impacted_by_files(paths, max_depth=args.impact_depth) if paths else []
+        payload["impact"] = impact_payload(paths, impact, depth=args.impact_depth, source=source)
+        write_json(result.output_dir / "impact.json", payload["impact"])
     if args.ask:
         llm_config = LLMConfig.from_env(enabled=args.llm)
         rag_index = get_rag_index(result, prefer_saved=bool(args.from_output))
@@ -270,6 +324,24 @@ def main() -> int:
             else:
                 location = ""
             print(f"- {node.kind}: {node.name}{location}")
+    if should_impact:
+        print("\nCodeGraph impact analysis:")
+        if not payload["impact"]["input_paths"]:
+            print("- no changed files provided and no git diff changed files were recorded")
+        elif not impact:
+            print("- no impacted nodes found")
+        else:
+            print(f"- input files: {', '.join(payload['impact']['input_paths'])}")
+            print(f"- affected files: {', '.join(payload['impact']['affected_files']) or 'none'}")
+            for node in impact[:20]:
+                if node.path and node.line:
+                    location = f" ({node.path}:{node.line})"
+                elif node.path:
+                    location = f" ({node.path})"
+                else:
+                    location = ""
+                print(f"- {node.kind}: {node.name}{location}")
+            print(f"- impact: {payload['outputs']['impact']}")
     if args.ask and answer:
         print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
         print(answer.answer)

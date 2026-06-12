@@ -109,6 +109,7 @@ class KnowledgeBuilder:
             call_graph=call_graph,
             entrypoints=entrypoints,
             configs=configs,
+            root=self.root,
         ).build()
         stats["code_graph"] = code_graph.stats
         return RepoKnowledge(

@@ -224,3 +224,28 @@ python main.py --from-output output\aegis\sample_repo --ask "Where is user creat
 
 The JSON response places this under `qa.context_pack`, so another agent can
 consume the code context directly.
+
+## Change Impact Analysis
+
+CodeGraph impact analysis starts from changed file nodes and walks reverse graph
+edges to find upstream files, symbols, interfaces, modules, and data nodes that
+depend on those files. The same `impacted_by_files(paths)` query powers report
+summaries, CLI JSON, skill usage, and `impact.json`.
+
+CLI:
+
+```powershell
+python main.py examples\sample_repo --impact --impact-file services/user_service.py --json
+python main.py --from-output output\aegis\sample_repo --impact --impact-file services/user_service.py --json
+```
+
+When `--impact-file` is omitted, AEGIS uses `knowledge.changed_files`, which is
+captured from `git diff --name-only HEAD` during analysis.
+
+Output:
+
+- `impact.input_paths`
+- `impact.affected_files`
+- `impact.affected_symbols`
+- `impact.nodes`
+- `output/aegis/<repo-name>/impact.json`

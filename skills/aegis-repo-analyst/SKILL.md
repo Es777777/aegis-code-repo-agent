@@ -108,6 +108,18 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py trace /users --from-output
 
 This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file -> downstream imports/calls/data nodes.
 
+### Analyze Change Impact
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py impact <repo-path> --path services/user_service.py --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py impact --from-output output\aegis\<repo-name> --path services/user_service.py --json
+```
+
+Use this when the user asks what a changed file may affect. If `--path` is not
+provided, AEGIS uses the Git diff files recorded in `knowledge.changed_files`.
+The JSON payload contains `impact.affected_files`, `impact.affected_symbols`,
+and all impacted `nodes`. Results are also written to `impact.json`.
+
 ### Evaluate Retrieval And Trace Quality
 
 ```powershell
