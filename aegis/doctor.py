@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 from typing import Any
+from urllib.parse import urlparse
 
 from aegis.config import LLMConfig
 
@@ -130,16 +131,51 @@ class Doctor:
                 status="ok",
                 message="LLM is disabled; offline analysis, CodeGraph, RAG, and evaluation are available.",
             )
+        detail = {
+            "model": self.llm_config.model,
+            "base_url": self.llm_config.base_url,
+            "timeout_seconds": self.llm_config.timeout_seconds,
+            "max_context_chars": self.llm_config.max_context_chars,
+        }
         if not self.llm_config.api_key:
             return DoctorCheck(
                 name="llm",
                 status="error",
                 message="LLM is enabled but no API key is configured.",
-                detail={"model": self.llm_config.model, "base_url": self.llm_config.base_url},
+                detail=detail,
+            )
+        parsed = urlparse(self.llm_config.base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return DoctorCheck(
+                name="llm",
+                status="error",
+                message="LLM base URL must be an absolute http(s) URL.",
+                detail=detail,
+            )
+        if not self.llm_config.model.strip():
+            return DoctorCheck(
+                name="llm",
+                status="error",
+                message="LLM model is empty.",
+                detail=detail,
+            )
+        if self.llm_config.timeout_seconds <= 0:
+            return DoctorCheck(
+                name="llm",
+                status="error",
+                message="LLM timeout must be greater than zero seconds.",
+                detail=detail,
+            )
+        if self.llm_config.max_context_chars < 4000:
+            return DoctorCheck(
+                name="llm",
+                status="warning",
+                message="LLM context budget is very small; RAG may not fit complete required files.",
+                detail=detail,
             )
         return DoctorCheck(
             name="llm",
             status="ok",
             message="LLM configuration is present",
-            detail={"model": self.llm_config.model, "base_url": self.llm_config.base_url},
+            detail=detail,
         )

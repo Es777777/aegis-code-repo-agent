@@ -50,7 +50,7 @@ python main.py --from-output output\aegis\sample_repo --trace-interface /users -
 
 ## Doctor
 
-`--doctor` 是轻量预检入口，不执行完整仓库分析。它检查 Python 版本、仓库路径、输出目录写权限、Git 可用性和可选 LLM 配置状态，支持 JSON 输出和非零退出码。
+`--doctor` 是轻量预检入口，不执行完整仓库分析。它检查 Python 版本、仓库路径、输出目录写权限、Git 可用性和可选 LLM 配置状态，支持 JSON 输出和非零退出码。启用 `--llm` 时，Doctor 会本地校验 API key、绝对 `http(s)` base URL、模型名、timeout 和 LLM 上下文预算，但不会发起联网请求。
 
 CLI 示例：
 

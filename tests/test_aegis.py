@@ -15,6 +15,7 @@ from unittest.mock import patch
 import aegis
 from aegis.artifacts import load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, LLMConfig, load_env_file
+from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
@@ -606,6 +607,17 @@ class LLMClientTest(unittest.TestCase):
             with self.assertRaisesRegex(LLMError, "empty"):
                 LLMClient(config).complete(system="system", user="user")
 
+    def test_llm_client_reports_invalid_base_url(self) -> None:
+        config = LLMConfig(
+            enabled=True,
+            api_key="test-key",
+            base_url="not-a-url",
+            model="test-model",
+        )
+
+        with self.assertRaisesRegex(LLMError, "URL is invalid"):
+            LLMClient(config).complete(system="system", user="user")
+
 
 class PackagingTest(unittest.TestCase):
     def test_console_script_module_is_packaged(self) -> None:
@@ -687,6 +699,42 @@ class DoctorTest(unittest.TestCase):
             self.assertEqual(completed.returncode, 2, completed.stdout)
             payload = json.loads(completed.stdout)
             self.assertFalse(payload["doctor"]["passed"])
+
+    def test_doctor_rejects_invalid_llm_url(self) -> None:
+        payload = Doctor(
+            repo=SAMPLE,
+            output_root=ROOT / "output" / "test-doctor",
+            llm_config=LLMConfig(
+                enabled=True,
+                api_key="test-key",
+                base_url="not-a-url",
+                model="test-model",
+            ),
+        ).run()
+
+        self.assertFalse(payload["passed"])
+        llm_check = next(check for check in payload["checks"] if check["name"] == "llm")
+        self.assertEqual(llm_check["status"], "error")
+        self.assertIn("absolute http(s) URL", llm_check["message"])
+
+    def test_doctor_warns_for_tiny_llm_context_budget(self) -> None:
+        payload = Doctor(
+            repo=SAMPLE,
+            output_root=ROOT / "output" / "test-doctor",
+            llm_config=LLMConfig(
+                enabled=True,
+                api_key="test-key",
+                base_url="https://llm.example/v1",
+                model="test-model",
+                max_context_chars=1200,
+            ),
+        ).run()
+
+        self.assertTrue(payload["passed"])
+        self.assertEqual(payload["warnings"], 1)
+        llm_check = next(check for check in payload["checks"] if check["name"] == "llm")
+        self.assertEqual(llm_check["status"], "warning")
+        self.assertIn("context budget", llm_check["message"])
 
     def test_skill_wrapper_doctor_json_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

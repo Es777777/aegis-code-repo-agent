@@ -32,18 +32,20 @@ class LLMClient:
             ],
             "temperature": 0.2,
         }
-        request = urllib.request.Request(
-            f"{self.config.base_url}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         try:
+            request = urllib.request.Request(
+                f"{self.config.base_url}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self.config.api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
             with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
                 data = json.loads(response.read().decode("utf-8"))
+        except ValueError as exc:
+            raise LLMError(f"LLM request URL is invalid: {self.config.base_url}") from exc
         except urllib.error.HTTPError as exc:
             body = self._error_body(exc)
             detail = f" HTTP response body: {body}" if body else ""

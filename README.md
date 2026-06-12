@@ -201,6 +201,7 @@ AEGIS_LLM_MAX_CONTEXT_CHARS=14000
 
 LLM 只接收 Context Router 选出的最小必要上下文，输出仍会进入 Evidence Reviewer。
 接口使用 OpenAI-compatible `/chat/completions`；HTTP 错误会在 CLI 输出中包含服务端返回体，便于排查 key、base URL、模型名或额度问题。
+`--doctor --llm` 会在本地预检 API key、base URL 是否为绝对 `http(s)` 地址、模型名、timeout 和 LLM 上下文预算；它不会发起联网请求，因此适合在比赛环境里快速排查配置错误。
 
 ## Architecture
 
