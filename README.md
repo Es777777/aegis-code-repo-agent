@@ -534,7 +534,7 @@ Every analysis run writes `manifest.json` next to the reports and indexes. It
 records the AEGIS version, manifest schema version, analyzed repository, git
 state when available, run configuration, summary stats, and artifact inventory.
 Each existing artifact entry includes its path, existence flag, byte size, and
-SHA256 digest. The readiness gate verifies required artifact sizes and hashes so
+SHA256 digest, including `run_summary.json`. The readiness gate verifies required artifact sizes and hashes so
 stale or tampered outputs are caught before a demo or submission.
 
 When a post-run command creates reusable artifacts, `manifest.run.post_run`

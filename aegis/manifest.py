@@ -85,6 +85,7 @@ def _artifact_inventory(output_dir: Path) -> dict[str, Any]:
         "qa_answer.json",
         "context_pack.md",
         "llm_prompt.md",
+        "run_summary.json",
     ]
     artifacts: dict[str, Any] = {}
     for name in names:

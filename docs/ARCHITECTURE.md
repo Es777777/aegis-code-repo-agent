@@ -405,7 +405,7 @@ commands such as evaluation, impact analysis, or readiness checks. It records:
 - run configuration
 - optional `run.post_run` command context for ask, ready smoke, trace, impact, or evaluation commands
 - repository, CodeGraph, RAG, and finding statistics
-- artifact paths, existence, byte sizes, and SHA256 digests
+- artifact paths, existence, byte sizes, and SHA256 digests, including `run_summary.json`
 
 For `--from-output` post-run commands, AEGIS preserves the original analysis
 configuration in `run` and refreshes only `run.post_run` plus artifact hashes.
