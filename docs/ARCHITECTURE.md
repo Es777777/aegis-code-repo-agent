@@ -181,6 +181,10 @@ python main.py <repo> --eval --eval-fail-under 0.9
 2. `LLMClient` 调用 OpenAI 兼容 `/chat/completions`。
 3. LLM 输出作为 Finding 进入 Evidence Reviewer。
 
+`LLMClient` 兼容字符串 content 和部分 OpenAI-compatible 网关返回的
+content parts；HTTP 错误会保留状态码和服务端响应体，方便排查 key、
+base URL、模型名和额度问题。
+
 环境变量：
 
 - `AEGIS_LLM_ENABLED`
@@ -231,6 +235,10 @@ the retriever as required context, so handler, service, repository, data, and
 config files can be included in `qa.context_pack.source_paths` even when the
 plain keyword score would not rank them high enough.
 
+The QA agent also treats explicit file mentions as required context. A question
+that names a real path, unique file name, or unique file stem forces that file
+into the context pack before ordinary retrieval candidates are considered.
+
 CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
 uses `AEGIS_RAG_CONTEXT_CHARS` and defaults to `48000` so agent prompts can
 carry real files instead of only short snippets.
@@ -239,8 +247,9 @@ carry real files instead of only short snippets.
 python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json
 ```
 
-The JSON response places this under `qa.context_pack`, so another agent can
-consume the code context directly.
+The JSON response places this under `qa.context_pack` and records the assembled
+prompt under `qa.llm_prompt`, so another agent can consume or replay the exact
+code context directly.
 
 Ask commands also write reusable artifacts:
 
@@ -248,8 +257,10 @@ Ask commands also write reusable artifacts:
   `context_pack`, retrieval results, evidence, and excerpts.
 - `context_pack.md`: the prompt-ready CodeGraph and source context in a
   human-readable format.
+- `llm_prompt.md`: the exact system/user prompt, including the rendered context
+  pack, that would be sent to an OpenAI-compatible chat model.
 
-Both artifacts are included in `manifest.json` after an ask run.
+These artifacts are included in `manifest.json` after an ask run.
 
 ## Change Impact Analysis
 

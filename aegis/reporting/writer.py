@@ -21,6 +21,7 @@ class ReportWriter:
         "readiness.json",
         "qa_answer.json",
         "context_pack.md",
+        "llm_prompt.md",
         "architecture.mmd",
     ]
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Any
 
@@ -20,6 +20,9 @@ class QAAnswer:
     answer: str
     results: list[RetrievalResult]
     context_pack: RAGContextPack
+    required_context_paths: list[str] = field(default_factory=list)
+    llm_system_prompt: str = ""
+    llm_user_prompt: str = ""
     graph_context: dict[str, Any] | None = None
     used_llm: bool = False
 
@@ -46,29 +49,29 @@ class RepositoryQAAgent:
     ) -> QAAnswer:
         results = self.retriever.search(question, top_k=top_k)
         graph_context = self._graph_context(question, results)
+        required_paths = self._required_context_paths(question, graph_context)
         context_pack = self.retriever.context_pack(
             question,
             top_k=top_k,
             max_chars=max_context_chars,
-            required_paths=self._graph_source_paths(graph_context),
+            required_paths=required_paths,
+        )
+        system = self._llm_system_prompt()
+        user = self._llm_user_prompt(
+            question,
+            graph_context=graph_context,
+            context_pack=context_pack,
         )
         if self.llm and self.llm.available:
-            system = (
-                "You are the AEGIS repository QA agent. Answer only from the provided "
-                "context pack. The context pack contains real line-numbered source "
-                "files when complete_file=true, and focused source windows otherwise. "
-                "If Graph Context is present, use it to explain route "
-                "and call-chain structure, then verify with source blocks. If the "
-                "source evidence is insufficient, say so. Cite file paths and line ranges."
-            )
-            graph_section = self._render_graph_context(graph_context)
-            user = f"Question: {question}\n\n{graph_section}\n\n{context_pack.render()}"
             try:
                 return QAAnswer(
                     question=question,
                     answer=self.llm.complete(system=system, user=user),
                     results=results,
                     context_pack=context_pack,
+                    required_context_paths=required_paths,
+                    llm_system_prompt=system,
+                    llm_user_prompt=user,
                     graph_context=graph_context,
                     used_llm=True,
                 )
@@ -80,6 +83,9 @@ class RepositoryQAAgent:
                     answer=fallback,
                     results=results,
                     context_pack=context_pack,
+                    required_context_paths=required_paths,
+                    llm_system_prompt=system,
+                    llm_user_prompt=user,
                     graph_context=graph_context,
                     used_llm=False,
                 )
@@ -88,6 +94,9 @@ class RepositoryQAAgent:
             answer=self._offline_answer(question, results, graph_context),
             results=results,
             context_pack=context_pack,
+            required_context_paths=required_paths,
+            llm_system_prompt=system,
+            llm_user_prompt=user,
             graph_context=graph_context,
             used_llm=False,
         )
@@ -203,6 +212,20 @@ class RepositoryQAAgent:
             lines.append(f"{idx}. {node['kind']} {node['name']}{location}")
         return "\n".join(lines)
 
+    def _required_context_paths(
+        self,
+        question: str,
+        graph_context: dict[str, Any] | None,
+    ) -> list[str]:
+        return list(
+            dict.fromkeys(
+                [
+                    *self._graph_source_paths(graph_context),
+                    *self._explicit_source_paths(question),
+                ]
+            )
+        )
+
     @staticmethod
     def _graph_source_paths(graph_context: dict[str, Any] | None) -> list[str]:
         if not graph_context:
@@ -213,6 +236,52 @@ class RepositoryQAAgent:
             if isinstance(path, str) and path:
                 paths.append(path)
         return list(dict.fromkeys(paths))
+
+    def _explicit_source_paths(self, question: str) -> list[str]:
+        normalized_question = question.replace("\\", "/").lower()
+        basename_counts: dict[str, int] = {}
+        stem_counts: dict[str, int] = {}
+        for path in self.retriever.source_chunks_by_path:
+            basename = path.rsplit("/", 1)[-1].lower()
+            stem = basename.rsplit(".", 1)[0]
+            basename_counts[basename] = basename_counts.get(basename, 0) + 1
+            stem_counts[stem] = stem_counts.get(stem, 0) + 1
+
+        paths: list[str] = []
+        for path in self.retriever.source_chunks_by_path:
+            normalized_path = path.lower()
+            basename = normalized_path.rsplit("/", 1)[-1]
+            stem = basename.rsplit(".", 1)[0]
+            if normalized_path in normalized_question:
+                paths.append(path)
+            elif basename_counts.get(basename, 0) == 1 and basename in normalized_question:
+                paths.append(path)
+            elif stem_counts.get(stem, 0) == 1 and stem in normalized_question:
+                paths.append(path)
+        return list(dict.fromkeys(paths))
+
+    @staticmethod
+    def _llm_system_prompt() -> str:
+        return (
+            "You are the AEGIS repository QA agent. Answer only from the provided "
+            "context pack. The context pack contains real line-numbered source "
+            "files when complete_file=true, and focused source windows otherwise. "
+            "Treat Files in context and Complete files in context as the source of "
+            "truth. If Graph Context is present, use it to explain route and "
+            "call-chain structure, then verify with source blocks. If the source "
+            "evidence is insufficient, say so. Cite file paths and line ranges."
+        )
+
+    @classmethod
+    def _llm_user_prompt(
+        cls,
+        question: str,
+        *,
+        graph_context: dict[str, Any] | None,
+        context_pack: RAGContextPack,
+    ) -> str:
+        graph_section = cls._render_graph_context(graph_context)
+        return f"Question: {question}\n\n{graph_section}\n\n{context_pack.render()}"
 
     @staticmethod
     def _source_excerpt(

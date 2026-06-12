@@ -88,6 +88,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "manifest": str(output_dir / "manifest.json"),
         "qa_answer": str(output_dir / "qa_answer.json"),
         "context_pack": str(output_dir / "context_pack.md"),
+        "llm_prompt": str(output_dir / "llm_prompt.md"),
     }
 
 
@@ -185,7 +186,12 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "answer": answer.answer,
         "used_llm": answer.used_llm,
         "graph_context": answer.graph_context,
+        "required_context_paths": answer.required_context_paths,
         "context_pack": answer.context_pack.to_dict(),
+        "llm_prompt": {
+            "system": answer.llm_system_prompt,
+            "user": answer.llm_user_prompt,
+        },
         "results": [retrieval_payload(agent, item) for item in answer.results],
     }
 
@@ -193,6 +199,7 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
 def write_qa_artifacts(output_dir: Path, qa_data: dict[str, Any], answer: QAAnswer) -> None:
     write_json(output_dir / "qa_answer.json", qa_data)
     (output_dir / "context_pack.md").write_text(render_qa_context_markdown(answer), encoding="utf-8")
+    (output_dir / "llm_prompt.md").write_text(render_llm_prompt_markdown(answer), encoding="utf-8")
 
 
 def render_qa_context_markdown(answer: QAAnswer) -> str:
@@ -234,6 +241,33 @@ def render_qa_context_markdown(answer: QAAnswer) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def render_llm_prompt_markdown(answer: QAAnswer) -> str:
+    return "\n".join(
+        [
+            "# AEGIS QA LLM Prompt",
+            "",
+            f"Question: {answer.question}",
+            f"Used LLM: {str(answer.used_llm).lower()}",
+            f"Required context paths: {', '.join(answer.required_context_paths) or 'none'}",
+            f"Files in context: {', '.join(answer.context_pack.source_paths()) or 'none'}",
+            f"Complete files in context: {', '.join(answer.context_pack.complete_file_paths()) or 'none'}",
+            "",
+            "## System Prompt",
+            "",
+            "```text",
+            answer.llm_system_prompt,
+            "```",
+            "",
+            "## User Prompt",
+            "",
+            "```text",
+            answer.llm_user_prompt,
+            "```",
+            "",
+        ]
+    )
 
 
 def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:

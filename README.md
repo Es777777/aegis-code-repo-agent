@@ -52,6 +52,7 @@ output/aegis/sample_repo/
   manifest.json
   qa_answer.json        # created by --ask
   context_pack.md       # created by --ask
+  llm_prompt.md         # created by --ask
 ```
 
 启动报告服务器：
@@ -199,6 +200,7 @@ AEGIS_LLM_MAX_CONTEXT_CHARS=14000
 ```
 
 LLM 只接收 Context Router 选出的最小必要上下文，输出仍会进入 Evidence Reviewer。
+接口使用 OpenAI-compatible `/chat/completions`；HTTP 错误会在 CLI 输出中包含服务端返回体，便于排查 key、base URL、模型名或额度问题。
 
 ## Architecture
 
@@ -366,6 +368,8 @@ retrieval summaries. Each context block contains:
 - `path`, `start_line`, `end_line`
 - `blocks[*].content`: real line-numbered code, preferably a whole file; large files fall back to focused source windows
 - `blocks[*].complete_file`: `true` when the block contains the entire file
+- `required_context_paths`: CodeGraph trace paths and explicit file mentions forced into context
+- `llm_prompt`: the exact system/user prompt assembled for the LLM
 - the original retrieved chunk id and matched terms
 - a configurable character budget
 
@@ -381,6 +385,7 @@ python main.py --from-output output\aegis\sample_repo --ask "Where is user creat
 ```text
 output/aegis/<repo-name>/qa_answer.json
 output/aegis/<repo-name>/context_pack.md
+output/aegis/<repo-name>/llm_prompt.md
 ```
 
 Configure the default budget with:
@@ -395,6 +400,11 @@ directly into the LLM prompt. Prefer blocks where `complete_file=true`; those
 are full source files, not summaries or isolated snippets. For route questions,
 AEGIS uses CodeGraph trace nodes as required context paths, so downstream files
 in the call chain are placed into the prompt context when budget allows.
+If the question names a real file path, unique file name, or unique file stem,
+AEGIS also treats that file as required context and attempts to pack it as a
+complete line-numbered source file. `llm_prompt.md` records the full prompt that
+would be sent to an OpenAI-compatible chat model, so demos and downstream agents
+can verify exactly which files entered the LLM context.
 
 ## Change Impact Analysis
 

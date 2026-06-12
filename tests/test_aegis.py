@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import json
+import io
 import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
 import os
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 import aegis
 from aegis.artifacts import load_analysis_result, load_rag_index
-from aegis.config import AegisConfig, load_env_file
+from aegis.config import AegisConfig, LLMConfig, load_env_file
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
+from aegis.llm import LLMClient, LLMError
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
@@ -228,6 +232,19 @@ class RAGRecallTest(unittest.TestCase):
         payload = pack.to_dict()
         self.assertTrue(any(block["complete_file"] for block in payload["blocks"]))
 
+    def test_qa_agent_forces_explicit_file_mentions_into_prompt_context(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer(
+            "please analyze src/timing/timing_model.py",
+            top_k=1,
+            max_context_chars=12000,
+        )
+        self.assertIn("src/timing/timing_model.py", answer.required_context_paths)
+        self.assertIn("src/timing/timing_model.py", answer.context_pack.complete_file_paths())
+        self.assertIn("Complete file: yes", answer.llm_user_prompt)
+        self.assertIn("class TimingModel", answer.llm_user_prompt)
+
     def test_offline_qa_prints_source_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()
@@ -414,6 +431,90 @@ class EnvConfigTest(unittest.TestCase):
                         os.environ[key] = value
 
 
+class FakeHTTPResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+
+    def __enter__(self) -> "FakeHTTPResponse":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
+
+
+class LLMClientTest(unittest.TestCase):
+    def test_llm_client_sends_openai_compatible_chat_request(self) -> None:
+        config = LLMConfig(
+            enabled=True,
+            api_key="test-key",
+            base_url="https://llm.example/v1",
+            model="test-model",
+        )
+        captured = {}
+
+        def fake_urlopen(request: object, timeout: int) -> FakeHTTPResponse:
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            captured["headers"] = dict(request.header_items())
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return FakeHTTPResponse(
+                {"choices": [{"message": {"content": [{"text": "hello"}, {"text": " world"}]}}]}
+            )
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            answer = LLMClient(config).complete(system="system prompt", user="user prompt")
+
+        self.assertEqual(answer, "hello world")
+        self.assertEqual(captured["url"], "https://llm.example/v1/chat/completions")
+        self.assertEqual(captured["timeout"], 120)
+        self.assertEqual(captured["headers"]["Authorization"], "Bearer test-key")
+        self.assertEqual(captured["payload"]["model"], "test-model")
+        self.assertEqual(captured["payload"]["messages"][0]["role"], "system")
+        self.assertEqual(captured["payload"]["messages"][1]["content"], "user prompt")
+
+    def test_llm_client_reports_http_error_body(self) -> None:
+        config = LLMConfig(
+            enabled=True,
+            api_key="test-key",
+            base_url="https://llm.example/v1",
+            model="test-model",
+        )
+
+        def fake_urlopen(request: object, timeout: int) -> FakeHTTPResponse:
+            raise urllib.error.HTTPError(
+                url=request.full_url,
+                code=401,
+                msg="Unauthorized",
+                hdrs={},
+                fp=io.BytesIO(b'{"error":"bad key"}'),
+            )
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(LLMError) as raised:
+                LLMClient(config).complete(system="system", user="user")
+
+        self.assertIn("HTTP 401", str(raised.exception))
+        self.assertIn("bad key", str(raised.exception))
+
+    def test_llm_client_rejects_empty_completion(self) -> None:
+        config = LLMConfig(
+            enabled=True,
+            api_key="test-key",
+            base_url="https://llm.example/v1",
+            model="test-model",
+        )
+
+        with patch(
+            "urllib.request.urlopen",
+            lambda request, timeout: FakeHTTPResponse({"choices": [{"message": {"content": ""}}]}),
+        ):
+            with self.assertRaisesRegex(LLMError, "empty"):
+                LLMClient(config).complete(system="system", user="user")
+
+
 class PackagingTest(unittest.TestCase):
     def test_console_script_module_is_packaged(self) -> None:
         data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -541,16 +642,22 @@ class CLITest(unittest.TestCase):
             self.assertIn("qa", payload)
             self.assertFalse(payload["qa"]["used_llm"])
             self.assertIn("context_pack", payload["qa"])
+            self.assertIn("llm_prompt", payload["qa"])
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
             self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
+            self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())
             qa_artifact = json.loads(Path(payload["outputs"]["qa_answer"]).read_text(encoding="utf-8"))
             self.assertEqual(qa_artifact["question"], "项目入口在哪里")
             context_pack_artifact = Path(payload["outputs"]["context_pack"]).read_text(encoding="utf-8")
             self.assertIn("AEGIS RAG CONTEXT PACK", context_pack_artifact)
             self.assertIn("class StandaloneEntrypoint", context_pack_artifact)
+            llm_prompt_artifact = Path(payload["outputs"]["llm_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("## User Prompt", llm_prompt_artifact)
+            self.assertIn("class StandaloneEntrypoint", llm_prompt_artifact)
             manifest = json.loads(Path(payload["outputs"]["manifest"]).read_text(encoding="utf-8"))
             self.assertTrue(manifest["artifacts"]["qa_answer.json"]["exists"])
             self.assertTrue(manifest["artifacts"]["context_pack.md"]["exists"])
+            self.assertTrue(manifest["artifacts"]["llm_prompt.md"]["exists"])
             context_blocks = payload["qa"]["context_pack"]["blocks"]
             self.assertTrue(context_blocks)
             self.assertTrue(any("class StandaloneEntrypoint" in block["content"] for block in context_blocks))
