@@ -450,3 +450,17 @@ output/aegis/<repo-name>/manifest.json
 
 Use this file when another agent or evaluation harness needs to prove which
 analysis artifacts belong together and how they were produced.
+
+## Reusing Artifacts Safely
+
+`--from-output` expects an existing AEGIS output directory. At minimum it must
+contain `knowledge.json`; RAG questions and evaluation also use `rag_index.json`
+when present.
+
+```powershell
+python main.py --from-output output\aegis\sample_repo --ask "Where is the entrypoint?" --json
+```
+
+If an artifact is missing or corrupt, AEGIS returns a concise non-zero error
+without a Python traceback, so scripts can fail cleanly and show the operator
+which file should be regenerated.

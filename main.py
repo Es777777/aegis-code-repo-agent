@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aegis.artifacts import load_analysis_result, load_rag_index
+from aegis.artifacts import ArtifactLoadError, load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, LLMConfig, load_env_file
 from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
@@ -190,7 +190,10 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
 def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
     rag_index_path = result.output_dir / "rag_index.json"
     if prefer_saved and rag_index_path.exists():
-        return load_rag_index(rag_index_path)
+        try:
+            return load_rag_index(rag_index_path)
+        except ArtifactLoadError as exc:
+            raise SystemExit(str(exc)) from exc
     return RAGIndexBuilder(result.knowledge).build()
 
 
@@ -276,7 +279,10 @@ def main() -> int:
         return 0 if payload["passed"] else 2
 
     if args.from_output:
-        result = load_analysis_result(Path(args.from_output))
+        try:
+            result = load_analysis_result(Path(args.from_output))
+        except ArtifactLoadError as exc:
+            raise SystemExit(str(exc)) from exc
     elif not args.repo:
         raise SystemExit("Missing repository path. Usage: python main.py <repo-path>")
     else:

@@ -543,6 +543,58 @@ class CLITest(unittest.TestCase):
             )
             self.assertIn("class StandaloneEntrypoint", excerpts)
 
+    def test_from_output_missing_knowledge_has_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "broken_output"
+            output_dir.mkdir()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--from-output",
+                    str(output_dir),
+                    "--ask",
+                    "Where is the entrypoint?",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Required artifact is missing", completed.stderr)
+            self.assertIn("knowledge.json", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
+
+    def test_from_output_corrupt_saved_rag_has_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            (result.output_dir / "rag_index.json").write_text("{not-json", encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--ask",
+                    "Where is the entrypoint?",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Artifact is not valid JSON", completed.stderr)
+            self.assertIn("rag_index.json", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
+
     def test_skill_wrapper_ask_from_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
