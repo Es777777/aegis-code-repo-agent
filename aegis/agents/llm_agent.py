@@ -24,16 +24,19 @@ class LLMRepositoryAnalyst:
                     tags=["llm", "disabled"],
                 )
             ]
+        section_budget = max(1200, self.router.max_chars // 3)
         context = "\n\n".join(
             [
                 "=== Architecture Context ===",
-                self.router.route("architecture"),
+                self.router.route("architecture", max_chars=section_budget),
                 "=== Interface Context ===",
-                self.router.route("interface"),
+                self.router.route("interface", max_chars=section_budget),
                 "=== Risk Context ===",
-                self.router.route("risk"),
+                self.router.route("risk", max_chars=section_budget),
             ]
         )
+        if len(context) > self.router.max_chars:
+            context = context[: max(0, self.router.max_chars - 40)].rstrip() + "\n...[truncated by LLM context budget]"
         system = (
             "你是 AEGIS 的仓库分析 Agent。必须基于给定上下文回答，"
             "不要编造不存在的文件。输出中文，强调架构、接口、风险和待确认问题。"

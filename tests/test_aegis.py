@@ -17,9 +17,11 @@ from aegis.artifacts import load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, LLMConfig, load_env_file
 from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
+from aegis.agents.llm_agent import LLMRepositoryAnalyst
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.llm import LLMClient, LLMError
+from aegis.orchestrator.context import ContextRouter
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
@@ -179,6 +181,73 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn('href="rag_index.json"', html_report)
             self.assertIn('href="manifest.json"', html_report)
             self.assertIn("function applyFilter()", html_report)
+
+
+class ContextRouterTest(unittest.TestCase):
+    def test_context_router_includes_line_numbered_source(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        context = ContextRouter(knowledge, max_chars=6000).route("interface")
+
+        self.assertIn("FILE app.py", context)
+        self.assertIn("source_context:", context)
+        self.assertIn("Source file: app.py", context)
+        self.assertIn("Complete file: yes", context)
+        self.assertIn("1: from fastapi import FastAPI", context)
+        self.assertIn("15: def create_user(payload: dict):", context)
+
+    def test_context_router_marks_truncated_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "large.py").write_text(
+                "\n".join(f"def fn_{idx}(): return {idx}" for idx in range(120)),
+                encoding="utf-8",
+            )
+            knowledge = KnowledgeBuilder(root, max_files=10, use_cache=False).build()
+            context = ContextRouter(knowledge, max_chars=900).route("architecture")
+
+            self.assertIn("Source file: large.py", context)
+            self.assertIn("Complete file: no", context)
+            self.assertIn("truncated by context budget", context)
+
+    def test_llm_repository_analyst_prompt_includes_source_context(self) -> None:
+        class CapturingLLM:
+            available = True
+
+            def __init__(self) -> None:
+                self.user = ""
+
+            def complete(self, *, system: str, user: str) -> str:
+                self.user = user
+                return "基于源码的综合分析"
+
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        llm = CapturingLLM()
+        findings = LLMRepositoryAnalyst(llm, ContextRouter(knowledge, max_chars=8000)).analyze(
+            knowledge
+        )
+
+        self.assertEqual(findings[0].title, "LLM 综合分析")
+        self.assertIn("source_context:", llm.user)
+        self.assertIn("Source file: app.py", llm.user)
+        self.assertIn("15: def create_user(payload: dict):", llm.user)
+
+    def test_llm_repository_analyst_marks_prompt_budget_truncation(self) -> None:
+        class CapturingLLM:
+            available = True
+
+            def __init__(self) -> None:
+                self.user = ""
+
+            def complete(self, *, system: str, user: str) -> str:
+                self.user = user
+                return "预算内分析"
+
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        llm = CapturingLLM()
+        LLMRepositoryAnalyst(llm, ContextRouter(knowledge, max_chars=1400)).analyze(knowledge)
+
+        self.assertIn("truncated by LLM context budget", llm.user)
+        self.assertLess(len(llm.user), 2200)
 
 
 class RAGRecallTest(unittest.TestCase):

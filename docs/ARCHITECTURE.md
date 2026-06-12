@@ -177,9 +177,15 @@ python main.py <repo> --eval --eval-fail-under 0.9
 
 `LLMRepositoryAnalyst` 是可选 Agent。启用后：
 
-1. `ContextRouter` 选择最小必要上下文。
+1. `ContextRouter` 选择最小必要上下文，并优先放入带行号的真实源码块。
 2. `LLMClient` 调用 OpenAI 兼容 `/chat/completions`。
 3. LLM 输出作为 Finding 进入 Evidence Reviewer。
+
+`ContextRouter` 会为入口、接口、配置、风险和数据相关文件渲染
+`source_context`，包含文件路径、语言、行号、`Complete file: yes/no`
+以及源码正文。`LLMRepositoryAnalyst` 会把 architecture/interface/risk
+三段上下文控制在 `AEGIS_LLM_MAX_CONTEXT_CHARS` 内，超预算时显式标记
+`truncated by LLM context budget`。
 
 `LLMClient` 兼容字符串 content 和部分 OpenAI-compatible 网关返回的
 content parts；HTTP 错误会保留状态码和服务端响应体，方便排查 key、

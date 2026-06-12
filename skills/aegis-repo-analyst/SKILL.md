@@ -209,6 +209,9 @@ AEGIS_LLM_MAX_CONTEXT_CHARS=14000
 Do not confuse these with image-generation variables such as `MM_IMAGE_API_KEY`; AEGIS RAG Q&A uses text chat completions.
 The skill wrapper accepts `--llm` on commands that may perform analysis or ask
 questions, and passes it through to the main AEGIS CLI.
+When `--llm` is used for full analysis, the optional LLM analyst receives
+source-backed ContextRouter sections with line-numbered code and
+`Complete file: yes/no` markers, bounded by `AEGIS_LLM_MAX_CONTEXT_CHARS`.
 Run `doctor --llm --json` before a demo to validate the local text LLM
 configuration. It checks that the key is present, the base URL is an absolute
 `http(s)` URL, the model is not empty, timeout is positive, and the context
