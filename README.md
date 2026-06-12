@@ -50,6 +50,7 @@ output/aegis/sample_repo/
   architecture.mmd
   rag_index.json
   manifest.json
+  run_summary.json
   qa_answer.json        # created by --ask
   context_pack.md       # created by --ask
   llm_prompt.md         # created by --ask
@@ -548,6 +549,21 @@ output/aegis/<repo-name>/manifest.json
 
 Use this file when another agent or evaluation harness needs to prove which
 analysis artifacts belong together and how they were produced.
+
+## Run Summary
+
+Every analysis and post-run command also writes:
+
+```text
+output/aegis/<repo-name>/run_summary.json
+```
+
+This is the compact handoff file for downstream agents and competition scripts.
+It summarizes repository stats, artifact availability, QA/RAG context safety,
+evaluation metrics, readiness status, impact-analysis status, and recommended
+next actions. Use it when an agent needs to decide whether the output directory
+is only analyzed, QA-checked, evaluated, fully ready, or needs attention without
+loading every artifact first.
 
 ## Reusing Artifacts Safely
 

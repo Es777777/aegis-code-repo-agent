@@ -19,6 +19,7 @@ from aegis.rag.qa import QAAnswer, RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
 from aegis.readiness import ReadinessAssessor
 from aegis.server import serve
+from aegis.summary import write_run_summary
 from aegis.utils import write_json
 
 
@@ -96,6 +97,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "qa_answer": str(output_dir / "qa_answer.json"),
         "context_pack": str(output_dir / "context_pack.md"),
         "llm_prompt": str(output_dir / "llm_prompt.md"),
+        "run_summary": str(output_dir / "run_summary.json"),
     }
 
 
@@ -549,6 +551,7 @@ def main() -> int:
         payload["readiness"] = readiness
     if args.ready or should_eval or should_impact or ask_question:
         refresh_manifest(result, args)
+    write_run_summary(result, payload=payload)
 
     if args.json:
         print_json(payload)

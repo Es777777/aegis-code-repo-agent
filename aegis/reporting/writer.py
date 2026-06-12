@@ -16,6 +16,7 @@ class ReportWriter:
         "findings.json",
         "rag_index.json",
         "manifest.json",
+        "run_summary.json",
         "evaluation.json",
         "impact.json",
         "readiness.json",
@@ -114,6 +115,7 @@ class ReportWriter:
                 "- `architecture.mmd`: Mermaid architecture diagram",
                 "- `report.html`: browsable HTML report",
                 "- `manifest.json`: analysis run manifest",
+                "- `run_summary.json`: compact downstream-agent status handoff",
                 "",
             ]
         )

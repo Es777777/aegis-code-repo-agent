@@ -21,6 +21,7 @@ Files:
 - `context_pack.md`: optional prompt-ready source context created by `--ask`.
 - `llm_prompt.md`: optional exact system/user prompt created by `--ask`.
 - `manifest.json`: analysis run manifest with version, config, stats, and artifact inventory.
+- `run_summary.json`: compact downstream-agent handoff with status, artifact availability, QA/RAG safety, evaluation, readiness, impact, and next actions.
 
 CodeGraph node kinds:
 

@@ -36,6 +36,7 @@
 - `architecture.mmd`：Mermaid 架构图。
 - `rag_index.json`：面向 Agent 问答的检索索引。
 - `manifest.json`：分析运行清单，记录版本、配置、仓库、统计和产物库存。
+- `run_summary.json`：面向下游 Agent 的紧凑状态摘要，聚合 QA、RAG、评测、ready 和下一步建议。
 
 ## 产物复用
 
@@ -311,6 +312,26 @@ Ask commands also write reusable artifacts:
   pack, that would be sent to an OpenAI-compatible chat model.
 
 These artifacts are included in `manifest.json` after an ask run.
+
+## Run Summary
+
+`run_summary.json` is written after every analysis and refreshed after post-run
+commands such as ask, eval, impact, and readiness. It is intentionally smaller
+than `knowledge.json` or `qa_answer.json` and is meant as the first file another
+agent should inspect. It records:
+
+- repository identity and output directory
+- artifact existence and sizes
+- key repository, CodeGraph, RAG, and finding counts
+- QA context-safety fields and complete-file context paths
+- evaluation score and context-coverage metrics
+- readiness pass/fail state
+- impact-analysis status when available
+- recommended next actions
+
+The `status` field is one of `analyzed`, `qa_checked`, `evaluated`, `ready`, or
+`needs_attention`, so orchestration code can make a quick routing decision
+before loading larger artifacts.
 
 ## Change Impact Analysis
 

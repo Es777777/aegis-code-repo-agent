@@ -21,6 +21,7 @@ from aegis.models import AnalysisResult, Finding
 from aegis.orchestrator.context import ContextRouter
 from aegis.rag.index import RAGIndexBuilder
 from aegis.reporting.writer import ReportWriter
+from aegis.summary import write_run_summary
 from aegis.utils import slugify, write_json
 
 
@@ -105,6 +106,7 @@ class AegisWorkflow:
             events_count=len(self.events),
         )
         write_json(self.output_dir / "manifest.json", manifest)
+        write_run_summary(result)
         return result
 
     def _event(self, kind: str, message: str) -> None:

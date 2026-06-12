@@ -260,10 +260,16 @@ class WorkflowTest(unittest.TestCase):
             self.assertTrue((first.output_dir / "architecture.mmd").exists())
             self.assertTrue((first.output_dir / "rag_index.json").exists())
             self.assertTrue((first.output_dir / "manifest.json").exists())
+            self.assertTrue((first.output_dir / "run_summary.json").exists())
             self.assertGreater(second.knowledge.stats.get("cache_hits", 0), 0)
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
+            summary = json.loads((second.output_dir / "run_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["repo"]["name"], "sample_repo")
+            self.assertEqual(summary["status"], "analyzed")
+            self.assertFalse(summary["qa"]["available"])
+            self.assertTrue(summary["artifacts"]["knowledge.json"]["exists"])
             manifest = json.loads((second.output_dir / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["schema_version"], "1.1")
             self.assertEqual(manifest["repo"]["name"], "sample_repo")
@@ -317,6 +323,7 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn('href="knowledge.json"', html_report)
             self.assertIn('href="rag_index.json"', html_report)
             self.assertIn('href="manifest.json"', html_report)
+            self.assertIn('href="run_summary.json"', html_report)
             self.assertIn("function applyFilter()", html_report)
 
 
@@ -1649,6 +1656,11 @@ class CLITest(unittest.TestCase):
             self.assertEqual(payload["readiness"]["threshold"], 1.0)
             self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
             self.assertTrue(Path(payload["outputs"]["manifest"]).exists())
+            self.assertTrue(Path(payload["outputs"]["run_summary"]).exists())
+            summary = json.loads(Path(payload["outputs"]["run_summary"]).read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "ready")
+            self.assertTrue(summary["evaluation"]["available"])
+            self.assertTrue(summary["readiness"]["passed"])
 
     def test_ready_ask_verifies_qa_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1686,6 +1698,13 @@ class CLITest(unittest.TestCase):
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
             self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
             self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())
+            self.assertTrue(Path(payload["outputs"]["run_summary"]).exists())
+            summary = json.loads(Path(payload["outputs"]["run_summary"]).read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "ready")
+            self.assertTrue(summary["qa"]["available"])
+            self.assertTrue(summary["qa"]["context_safe_for_llm"])
+            self.assertTrue(summary["qa"]["complete_file_paths"])
+            self.assertEqual(summary["next_actions"], ["Ready for demo or downstream agent consumption."])
 
     def test_skill_wrapper_ready_from_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
