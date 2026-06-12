@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=8, help="RAG 检索返回数量")
     parser.add_argument("--eval", action="store_true", help="运行 RAG/CodeGraph 内置或自定义评测")
     parser.add_argument("--eval-suite", help="评测用例 JSON 文件；不传则使用当前示例仓库的内置用例")
+    parser.add_argument(
+        "--eval-fail-under",
+        type=float,
+        help="评测 overall_score 低于该阈值时以非零状态退出，例如 0.85",
+    )
     parser.add_argument("--json", action="store_true", help="以 JSON 输出分析摘要、接口追踪或 RAG 问答结果")
     return parser.parse_args()
 
@@ -135,8 +140,20 @@ def metric_ratio(hits: int, total: int, rate: float) -> str:
     return f"{hits}/{total} ({rate:.2%})"
 
 
+def quality_gate_payload(metrics: dict[str, Any], threshold: float | None) -> dict[str, Any]:
+    score = float(metrics.get("overall_score", 0.0))
+    passed = threshold is None or score >= threshold
+    return {
+        "threshold": threshold,
+        "score": score,
+        "passed": passed,
+    }
+
+
 def main() -> int:
     args = parse_args()
+    if args.eval_fail_under is not None and not 0 <= args.eval_fail_under <= 1:
+        raise SystemExit("--eval-fail-under 必须在 0 到 1 之间，例如 0.85")
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
@@ -172,16 +189,18 @@ def main() -> int:
         )
         answer = qa.answer(args.ask, top_k=args.top_k)
         payload["qa"] = qa_payload(qa, answer)
-    if args.eval or args.eval_suite:
+    should_eval = args.eval or args.eval_suite or args.eval_fail_under is not None
+    if should_eval:
         if rag_index is None:
             rag_index = RAGIndexBuilder(result.knowledge).build()
         suite = load_suite(Path(args.eval_suite)) if args.eval_suite else builtin_suite(result.knowledge.repo_name)
         evaluation = Evaluator(result.knowledge, rag_index).run(suite)
         write_json(result.output_dir / "evaluation.json", evaluation)
         payload["evaluation"] = evaluation
+        payload["quality_gate"] = quality_gate_payload(evaluation["metrics"], args.eval_fail_under)
     if args.json:
         print_json(payload)
-        return 0
+        return 0 if payload.get("quality_gate", {}).get("passed", True) else 2
     print(f"AEGIS analysis complete: {result.output_dir}")
     for key in ("report", "html", "mermaid", "knowledge", "findings", "rag_index"):
         print(f"- {key.replace('_', ' ')}: {payload['outputs'][key]}")
@@ -201,7 +220,7 @@ def main() -> int:
     if args.ask:
         print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
         print(answer.answer)
-    if args.eval or args.eval_suite:
+    if should_eval:
         metrics = payload["evaluation"]["metrics"]
         print("\nAEGIS evaluation:")
         print(f"- suite: {payload['evaluation']['suite']}")
@@ -213,6 +232,15 @@ def main() -> int:
         )
         print(f"- overall score: {metrics['overall_score']:.2%}")
         print(f"- evaluation: {payload['outputs']['evaluation']}")
+        gate = payload.get("quality_gate")
+        if gate and gate["threshold"] is not None:
+            print(
+                "- quality gate: "
+                f"{'passed' if gate['passed'] else 'failed'} "
+                f"(score={gate['score']:.2%}, threshold={gate['threshold']:.2%})"
+            )
+            if not gate["passed"]:
+                return 2
     return 0
 
 

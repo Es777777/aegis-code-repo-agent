@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    name: Test and evaluation gates
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Compile
+        run: python -m compileall aegis main.py tests skills/aegis-repo-analyst/scripts/run_aegis.py
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Sample repo evaluation gate
+        run: python main.py examples/sample_repo --max-files 100 --no-cache --eval --eval-fail-under 1.0 --json
+
+      - name: EDA repo evaluation gate
+        run: python main.py examples/eda_repo --max-files 100 --no-cache --eval --eval-fail-under 1.0 --json

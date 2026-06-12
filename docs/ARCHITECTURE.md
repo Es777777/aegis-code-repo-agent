@@ -139,9 +139,12 @@ CLI 示例：
 python main.py examples\eda_repo --eval
 python main.py examples\eda_repo --eval --json
 python main.py <repo> --eval-suite suite.json --json
+python main.py <repo> --eval --eval-fail-under 0.9
 ```
 
 评测结果会写入 `output/aegis/<repo>/evaluation.json`，也会进入 `--json` payload，方便比赛评测脚本、前端或其他 Agent 消费。
+
+`--eval-fail-under` 是质量门禁：当 `overall_score` 低于阈值时 CLI 返回非零状态码，并在 JSON payload 中写入 `quality_gate`。GitHub Actions 会使用该门禁自动防止示例仓库评测退化。
 
 ## LLM 接入
 

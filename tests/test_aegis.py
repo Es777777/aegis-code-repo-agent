@@ -160,6 +160,28 @@ class EvaluationTest(unittest.TestCase):
             self.assertEqual(suite.name, "custom")
             self.assertEqual(suite.rag[0].top_k, 5)
 
+    def test_custom_eval_suite_accepts_utf8_sig(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            suite_path = Path(tmp) / "suite.json"
+            suite_path.write_text(
+                "\ufeff"
+                + json.dumps(
+                    {
+                        "name": "bom-suite",
+                        "rag": [
+                            {
+                                "question": "项目入口在哪里",
+                                "expected_paths": ["src/main_entrypoint.py"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            suite = load_suite(suite_path)
+            self.assertEqual(suite.name, "bom-suite")
+
 
 class EnvConfigTest(unittest.TestCase):
     def test_load_env_file(self) -> None:
@@ -283,6 +305,80 @@ class CLITest(unittest.TestCase):
             self.assertGreaterEqual(payload["evaluation"]["metrics"]["rag_recall"], 0.75)
             evaluation_path = Path(payload["outputs"]["evaluation"])
             self.assertTrue(evaluation_path.exists())
+
+    def test_eval_quality_gate_passes_when_score_meets_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/eda_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--eval",
+                    "--eval-fail-under",
+                    "1.0",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertTrue(payload["quality_gate"]["passed"])
+
+    def test_eval_quality_gate_fails_when_score_is_below_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            suite_path = Path(tmp) / "bad_suite.json"
+            suite_path.write_text(
+                json.dumps(
+                    {
+                        "name": "bad",
+                        "rag": [
+                            {
+                                "question": "项目入口在哪里",
+                                "expected_paths": ["missing/file.py"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/eda_repo",
+                    "--out",
+                    str(Path(tmp) / "out"),
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--eval-suite",
+                    str(suite_path),
+                    "--eval-fail-under",
+                    "0.9",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 2, completed.stdout)
+            payload = json.loads(completed.stdout)
+            self.assertFalse(payload["quality_gate"]["passed"])
+            self.assertEqual(payload["quality_gate"]["threshold"], 0.9)
 
 
 if __name__ == "__main__":

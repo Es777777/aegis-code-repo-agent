@@ -90,9 +90,10 @@ This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file 
 python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path>
 python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --json
 python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --suite suite.json --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --fail-under 0.9
 ```
 
-Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`.
+Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`. `--fail-under` turns the score into a hard quality gate for CI or competition scripts.
 
 ### Serve HTML Report
 

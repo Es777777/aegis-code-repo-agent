@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("--no-cache", action="store_true")
     analyze.add_argument("--eval", action="store_true")
     analyze.add_argument("--eval-suite")
+    analyze.add_argument("--eval-fail-under")
     analyze.add_argument("--json", action="store_true")
 
     ask = sub.add_parser("ask")
@@ -43,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("--no-cache", action="store_true")
     ask.add_argument("--eval", action="store_true")
     ask.add_argument("--eval-suite")
+    ask.add_argument("--eval-fail-under")
     ask.add_argument("--json", action="store_true")
 
     trace = sub.add_parser("trace")
@@ -53,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("--no-cache", action="store_true")
     trace.add_argument("--eval", action="store_true")
     trace.add_argument("--eval-suite")
+    trace.add_argument("--eval-fail-under")
     trace.add_argument("--json", action="store_true")
 
     eval_cmd = sub.add_parser("eval")
@@ -60,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     eval_cmd.add_argument("--max-files", default="1500")
     eval_cmd.add_argument("--out", default="output/aegis")
     eval_cmd.add_argument("--suite")
+    eval_cmd.add_argument("--fail-under")
     eval_cmd.add_argument("--no-cache", action="store_true")
     eval_cmd.add_argument("--json", action="store_true")
 
@@ -76,6 +80,8 @@ def main() -> int:
         common.append("--eval")
     if getattr(args, "eval_suite", None):
         common.extend(["--eval-suite", args.eval_suite])
+    if getattr(args, "eval_fail_under", None):
+        common.extend(["--eval-fail-under", args.eval_fail_under])
     if getattr(args, "json", False):
         common.append("--json")
 
@@ -92,6 +98,8 @@ def main() -> int:
         command = [*common, "--eval"]
         if args.suite:
             command.extend(["--eval-suite", args.suite])
+        if args.fail_under:
+            command.extend(["--eval-fail-under", args.fail_under])
         return run(command, cwd=root)
     raise SystemExit(f"Unknown command: {args.command}")
 

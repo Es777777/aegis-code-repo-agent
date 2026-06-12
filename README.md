@@ -99,6 +99,7 @@ python main.py examples\sample_repo --trace-interface /users --json
 ```powershell
 python main.py examples\eda_repo --eval
 python main.py examples\eda_repo --eval --json
+python main.py examples\eda_repo --eval --eval-fail-under 0.9
 ```
 
 启用 LLM 后基于检索上下文综合回答：
@@ -245,6 +246,23 @@ AEGIS 内置轻量评测层，用于防止 RAG 和 CodeGraph 能力退化。运�
 ```powershell
 python main.py <repo-path> --eval-suite suite.json --json
 ```
+
+质量门禁适合 CI 或比赛评测脚本：`--eval-fail-under 0.9` 会在 `overall_score < 0.9` 时返回非零退出码，并在 JSON 中输出 `quality_gate`。
+
+## CI
+
+仓库内置 GitHub Actions 工作流：
+
+```text
+.github/workflows/ci.yml
+```
+
+每次 push / pull request 会在 Python 3.11 和 3.13 上运行：
+
+- `python -m compileall ...`
+- `python -m unittest discover -s tests -v`
+- `examples/sample_repo` 内置评测门禁
+- `examples/eda_repo` 内置评测门禁
 
 ## Codex Skill
 

@@ -85,7 +85,7 @@ def builtin_suite(repo_name: str) -> EvaluationSuite:
 
 
 def load_suite(path: Path) -> EvaluationSuite:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     return EvaluationSuite(
         name=str(data.get("name") or path.stem),
         rag=[
