@@ -24,7 +24,7 @@ from aegis.knowledge.parsers import extract_interfaces
 from aegis.llm import LLMClient, LLMError
 from aegis.orchestrator.context import ContextRouter
 from aegis.orchestrator.workflow import AegisWorkflow
-from aegis.rag.index import RAGIndex, RAGIndexBuilder
+from aegis.rag.index import RAGChunk, RAGIndex, RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
 from aegis.rag.retriever import RAGRetriever
 from aegis.readiness import ReadinessAssessor
@@ -460,6 +460,69 @@ class RAGRecallTest(unittest.TestCase):
         payload = pack.to_dict()
         self.assertTrue(any(block["complete_file"] for block in payload["blocks"]))
         self.assertGreater(payload["target_context_budget_chars"], 0)
+
+    def test_rag_context_expands_relation_hits_to_both_source_files(self) -> None:
+        index = RAGIndex(
+            repo_name="relation_repo",
+            chunks=[
+                RAGChunk(
+                    id="source:caller.py:1-2",
+                    kind="source",
+                    title="caller.py:1-2",
+                    text="\n".join(
+                        [
+                            "Source file: caller.py",
+                            "Language: Python",
+                            "Line range: 1-2",
+                            "Code:",
+                            "1: from callee import target",
+                            "2: target()",
+                        ]
+                    ),
+                    path="caller.py",
+                    line=1,
+                    node_ids=["file:caller.py"],
+                    metadata={"start_line": 1, "end_line": 2, "language": "Python"},
+                ),
+                RAGChunk(
+                    id="source:callee.py:1-2",
+                    kind="source",
+                    title="callee.py:1-2",
+                    text="\n".join(
+                        [
+                            "Source file: callee.py",
+                            "Language: Python",
+                            "Line range: 1-2",
+                            "Code:",
+                            "1: def target():",
+                            "2:     return 'called'",
+                        ]
+                    ),
+                    path="callee.py",
+                    line=1,
+                    node_ids=["file:callee.py"],
+                    metadata={"start_line": 1, "end_line": 2, "language": "Python"},
+                ),
+                RAGChunk(
+                    id="edge:caller-callee",
+                    kind="edge:calls_file",
+                    title="caller.py calls callee.py",
+                    text="needle_relation caller.py --calls_file--> callee.py",
+                    path="caller.py",
+                    line=2,
+                    node_ids=["file:caller.py", "file:callee.py"],
+                    metadata={"kind": "calls_file"},
+                ),
+            ],
+        )
+        pack = RAGRetriever(index).context_pack("needle_relation", top_k=1, max_chars=8000)
+
+        self.assertEqual(pack.target_context_paths, ["caller.py", "callee.py"])
+        self.assertEqual(pack.missing_target_context_paths(), [])
+        self.assertEqual(pack.incomplete_target_context_paths(), [])
+        self.assertIn("caller.py", pack.complete_file_paths())
+        self.assertIn("callee.py", pack.complete_file_paths())
+        self.assertIn("def target", pack.render())
 
     def test_qa_agent_forces_explicit_file_mentions_into_prompt_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()

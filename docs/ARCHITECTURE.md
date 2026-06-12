@@ -260,6 +260,13 @@ the retriever as required context, so handler, service, repository, data, and
 config files can be included in `qa.context_pack.source_paths` even when the
 plain keyword score would not rank them high enough.
 
+For non-route questions, RAG relation hits are also expanded through CodeGraph
+node IDs before prompt packing. If retrieval matches a relation chunk such as
+`A calls B`, both endpoint source files are promoted to target context and
+packed as complete line-numbered files when the budget allows. This preserves
+the semantic retrieval signal while ensuring the LLM receives the actual files
+needed to reason about the relationship.
+
 The QA agent also treats explicit file mentions as required context. A question
 that names a real path, unique file name, or unique file stem forces that file
 into the context pack before ordinary retrieval candidates are considered.

@@ -429,6 +429,11 @@ directly into the LLM prompt. Prefer blocks where `complete_file=true`; those
 are full source files, not summaries or isolated snippets. For route questions,
 AEGIS uses CodeGraph trace nodes as required context paths, so downstream files
 in the call chain are placed into the prompt context when budget allows.
+For non-route questions, relation hits are expanded through CodeGraph node IDs:
+when retrieval matches an edge such as `A calls B`, both endpoint source files
+become target context and are packed as complete line-numbered files when the
+budget allows. This keeps semantic RAG from handing the LLM only a relationship
+summary without the files needed to reason about that relationship.
 If the question names a real file path, unique file name, or unique file stem,
 AEGIS also treats that file as required context and attempts to pack it as a
 complete line-numbered source file. `llm_prompt.md` records the full prompt that

@@ -333,6 +333,10 @@ class RAGRetriever:
         required_paths: list[str] | None = None,
     ) -> RAGContextPack:
         candidates = self.search(query, top_k=max(top_k * 4, top_k + 12))
+        candidates = self._expand_with_related_source_paths(
+            candidates,
+            max_paths=max(1, top_k * 4),
+        )
         context_results = self.file_context(
             candidates,
             max_paths=max(1, top_k * 3),
@@ -470,6 +474,76 @@ class RAGRetriever:
                     )
                 )
         return results
+
+    def _expand_with_related_source_paths(
+        self,
+        results: list[RetrievalResult],
+        *,
+        max_paths: int,
+    ) -> list[RetrievalResult]:
+        expanded: list[RetrievalResult] = []
+        seen_result_keys: set[tuple[str, str | None]] = set()
+        seen_paths: set[str] = set()
+        for result in results:
+            key = (result.chunk.id, result.retrieved_from)
+            if key not in seen_result_keys:
+                expanded.append(result)
+                seen_result_keys.add(key)
+            for path in self._related_source_paths(result.chunk):
+                if path in seen_paths:
+                    continue
+                if len(seen_paths) >= max_paths:
+                    break
+                source = self._best_source_chunk_for_path(path, result.chunk)
+                if not source:
+                    continue
+                related = RetrievalResult(
+                    chunk=source,
+                    score=max(result.score * 0.72, 0.2),
+                    matched_terms=result.matched_terms,
+                    retrieved_from=f"{result.chunk.id} -> related_source:{path}",
+                )
+                related_key = (related.chunk.id, related.retrieved_from)
+                if related_key not in seen_result_keys:
+                    expanded.append(related)
+                    seen_result_keys.add(related_key)
+                seen_paths.add(path)
+        return sorted(expanded, key=lambda item: item.score, reverse=True)
+
+    def _related_source_paths(self, chunk: RAGChunk) -> list[str]:
+        paths: list[str] = []
+
+        def add(path: str | None) -> None:
+            if path and path in self.source_chunks_by_path:
+                paths.append(path)
+
+        if chunk.kind == "source":
+            add(chunk.path)
+        else:
+            add(chunk.path)
+            companion = self.source_companion(chunk)
+            add(companion.path if companion else None)
+        for node_id in chunk.node_ids:
+            for related in self.chunks_by_node.get(node_id, []):
+                if related.kind == "source":
+                    add(related.path)
+                    continue
+                add(related.path)
+                companion = self.source_companion(related)
+                add(companion.path if companion else None)
+        return list(dict.fromkeys(paths))
+
+    def _best_source_chunk_for_path(self, path: str, seed: RAGChunk) -> RAGChunk | None:
+        source_chunks = self.source_chunks_by_path.get(path, [])
+        if not source_chunks:
+            return None
+        if seed.path == path and seed.line:
+            for source in source_chunks:
+                start = self._line_value(source.metadata.get("start_line"), source.line or 1) or 1
+                end = self._line_value(source.metadata.get("end_line"), start) or start
+                if start <= seed.line <= end:
+                    return source
+        return source_chunks[0]
 
     def _context_chunk(self, chunk: RAGChunk) -> RAGChunk:
         if chunk.kind == "source":
