@@ -465,9 +465,10 @@ analysis artifacts belong together and how they were produced.
 
 ## Reusing Artifacts Safely
 
-`--from-output` expects an existing AEGIS output directory. At minimum it must
-contain `knowledge.json`; RAG questions and evaluation also use `rag_index.json`
-when present.
+`--from-output` expects an existing AEGIS output directory. It must contain
+`knowledge.json`; RAG questions and evaluation also require the saved
+`rag_index.json` so artifact reuse stays deterministic and does not silently
+depend on the original repository still being available.
 
 ```powershell
 python main.py --from-output output\aegis\sample_repo --ask "Where is the entrypoint?" --json

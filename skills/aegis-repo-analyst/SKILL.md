@@ -108,6 +108,10 @@ For repeated questions, reuse existing artifacts without rescanning:
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask "Where is the entrypoint?" --from-output output\aegis\<repo-name> --json
 ```
 
+`--from-output` ask/eval requires `rag_index.json` in that output directory.
+If it is missing or corrupt, rerun `analyze` instead of relying on an implicit
+rebuild.
+
 ### Trace An Interface
 
 ```powershell

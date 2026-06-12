@@ -238,7 +238,7 @@ def render_qa_context_markdown(answer: QAAnswer) -> str:
 
 def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
     rag_index_path = result.output_dir / "rag_index.json"
-    if prefer_saved and rag_index_path.exists():
+    if prefer_saved:
         try:
             return load_rag_index(rag_index_path)
         except ArtifactLoadError as exc:

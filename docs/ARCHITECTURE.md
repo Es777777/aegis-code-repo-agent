@@ -39,7 +39,7 @@
 
 ## 产物复用
 
-`--from-output` 可以从已有输出目录读取 `knowledge.json`、`findings.json` 和 `rag_index.json`，跳过重新扫描与 Agent 分析，直接执行 RAG 问答、CodeGraph 追踪或评测。这适合大仓库的多轮追问、前端交互和比赛评测脚本。
+`--from-output` 可以从已有输出目录读取 `knowledge.json`、`findings.json` 和 `rag_index.json`，跳过重新扫描与 Agent 分析，直接执行 RAG 问答、CodeGraph 追踪或评测。这适合大仓库的多轮追问、前端交互和比赛评测脚本。执行 RAG 问答或评测时必须存在保存好的 `rag_index.json`，避免在复用产物时隐式依赖原仓库路径重新构建索引。
 
 CLI 示例：
 

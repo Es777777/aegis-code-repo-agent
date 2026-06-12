@@ -667,6 +667,32 @@ class CLITest(unittest.TestCase):
             self.assertIn("rag_index.json", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
 
+    def test_from_output_missing_saved_rag_has_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            (result.output_dir / "rag_index.json").unlink()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--ask",
+                    "Where is the entrypoint?",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Required artifact is missing", completed.stderr)
+            self.assertIn("rag_index.json", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
+
     def test_skill_wrapper_ask_from_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
