@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis.models import CodeGraphEdge, CodeGraphNode, Evidence, FileRecord, RepoKnowledge
+from aegis.utils import read_text
 
 
 @dataclass
@@ -32,8 +33,13 @@ class RAGIndex:
 
 
 class RAGIndexBuilder:
+    SOURCE_CHUNK_LINES = 120
+    SOURCE_CHUNK_OVERLAP = 20
+    MAX_SOURCE_CHARS_PER_FILE = 240_000
+
     def __init__(self, knowledge: RepoKnowledge) -> None:
         self.knowledge = knowledge
+        self.root = Path(knowledge.root)
         self.nodes = {node.id: node for node in knowledge.code_graph.nodes}
         self.edges = knowledge.code_graph.edges
         self.files = {record.path: record for record in knowledge.files}
@@ -42,6 +48,7 @@ class RAGIndexBuilder:
         chunks: list[RAGChunk] = []
         chunks.extend(self._repo_overview_chunks())
         chunks.extend(self._file_chunks())
+        chunks.extend(self._source_chunks())
         chunks.extend(self._symbol_chunks())
         chunks.extend(self._interface_chunks())
         chunks.extend(self._data_chunks())
@@ -106,6 +113,63 @@ class RAGIndexBuilder:
                     metadata={"language": record.language, "lines": record.lines},
                 )
             )
+        return chunks
+
+    def _source_chunks(self) -> list[RAGChunk]:
+        chunks: list[RAGChunk] = []
+        for record in self.knowledge.files:
+            path = self.root / record.path
+            try:
+                text = read_text(path, max_bytes=self.MAX_SOURCE_CHARS_PER_FILE)
+            except (OSError, UnicodeDecodeError):
+                continue
+            lines = text.splitlines()
+            if not lines:
+                continue
+            step = max(1, self.SOURCE_CHUNK_LINES - self.SOURCE_CHUNK_OVERLAP)
+            for start in range(0, len(lines), step):
+                end = min(len(lines), start + self.SOURCE_CHUNK_LINES)
+                numbered = [
+                    f"{line_no}: {line}"
+                    for line_no, line in enumerate(lines[start:end], start=start + 1)
+                ]
+                chunk_id = f"source:{record.path}:{start + 1}-{end}"
+                chunk_evidence = [
+                    Evidence(
+                        path=record.path,
+                        line=start + 1,
+                        snippet=f"source lines {start + 1}-{end}",
+                        confidence=0.9,
+                        source="source-chunk",
+                    )
+                ]
+                chunks.append(
+                    RAGChunk(
+                        id=chunk_id,
+                        kind="source",
+                        title=f"{record.path}:{start + 1}-{end}",
+                        text="\n".join(
+                            [
+                                f"Source file: {record.path}",
+                                f"Language: {record.language}",
+                                f"Line range: {start + 1}-{end}",
+                                "Code:",
+                                *numbered,
+                            ]
+                        ),
+                        path=record.path,
+                        line=start + 1,
+                        node_ids=[f"file:{record.path}"],
+                        evidence=chunk_evidence,
+                        metadata={
+                            "language": record.language,
+                            "start_line": start + 1,
+                            "end_line": end,
+                        },
+                    )
+                )
+                if end >= len(lines):
+                    break
         return chunks
 
     def _symbol_chunks(self) -> list[RAGChunk]:

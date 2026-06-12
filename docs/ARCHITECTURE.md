@@ -86,17 +86,27 @@ RAG 层把 CodeGraph 与源码证据转换成 Agent 可读的检索块：
 
 - `repo_overview`
 - `file`
+- `source`
 - `class`
 - `function`
 - `interface`
 - `data_model`
 - `edge:*`
 
+`source` chunk 直接来自仓库真实文件内容，保留文件路径、起止行号和带行号的代码正文。默认每块 120 行、20 行重叠，并限制单文件最大读取量，避免大文件把上下文预算吃光。
+
+检索增强包括：
+
+- 标识符拆分：`CamelCase`、`snake_case`、路径片段会拆成可检索 token。
+- 查询扩展：内置常见中文仓库问题和 EDA 术语，例如入口、核心模块、布线、布局、硬宏、Vivado、RTL、DFX、器件资源。
+- 邻居补全：命中符号、文件或 CodeGraph 边时，会补同文件 `source` chunk 和相关节点 chunk。
+- LLM 上下文补源：给模型的 RAG context 会优先包含真实源码；离线回答也会打印围绕命中行的源码节选。
+
 问答流程：
 
 1. `RAGIndexBuilder` 从 `RepoKnowledge` 构建 `rag_index.json`。
-2. `RAGRetriever` 使用离线 BM25/关键词检索返回证据 chunk。
-3. `RepositoryQAAgent` 在无 LLM 时输出证据式回答；有 LLM 时把上下文交给模型生成自然语言回答。
+2. `RAGRetriever` 使用离线 BM25/关键词检索返回证据 chunk，并补齐源码 companion。
+3. `RepositoryQAAgent` 在无 LLM 时输出证据式回答和源码节选；有 LLM 时把带行号源码的上下文交给模型生成自然语言回答。
 
 CLI 示例：
 

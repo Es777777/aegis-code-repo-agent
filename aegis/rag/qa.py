@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from aegis.llm import LLMClient, LLMError
 from aegis.models import RepoKnowledge
-from aegis.rag.index import RAGIndex
+from aegis.rag.index import RAGChunk, RAGIndex
 from aegis.rag.retriever import RAGRetriever, RetrievalResult
 
 
@@ -75,6 +75,33 @@ class RepositoryQAAgent:
                 lines.append(f"   证据：{ev.path}:{ev.line} {ev.snippet}")
             summary = " ".join(chunk.text.splitlines()[:3])
             lines.append(f"   摘要：{summary[:260]}")
+            source = chunk if chunk.kind == "source" else self.retriever.source_companion(chunk)
+            if source:
+                excerpt = self._source_excerpt(source, focus_line=chunk.line)
+                if excerpt:
+                    lines.append("   源码上下文：")
+                    lines.extend(f"      {line}" for line in excerpt)
         lines.append("")
         lines.append("结论：以上证据可作为回答依据；若需要自然语言综合推理，请配置 AEGIS_LLM_* 并使用 --llm。")
         return "\n".join(lines)
+
+    @staticmethod
+    def _source_excerpt(
+        chunk: RAGChunk,
+        *,
+        focus_line: int | None = None,
+        max_lines: int = 16,
+    ) -> list[str]:
+        lines = chunk.text.splitlines()
+        try:
+            code_start = lines.index("Code:") + 1
+        except ValueError:
+            code_start = 0
+        code_lines = lines[code_start:]
+        if focus_line:
+            prefix = f"{focus_line}:"
+            for idx, line in enumerate(code_lines):
+                if line.startswith(prefix):
+                    start = max(0, idx - max_lines // 2)
+                    return code_lines[start : start + max_lines]
+        return code_lines[:max_lines]

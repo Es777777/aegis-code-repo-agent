@@ -17,6 +17,7 @@ from aegis.rag.retriever import RAGRetriever
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "examples" / "sample_repo"
+EDA_SAMPLE = ROOT / "examples" / "eda_repo"
 
 
 class KnowledgeBuilderTest(unittest.TestCase):
@@ -75,6 +76,52 @@ class WorkflowTest(unittest.TestCase):
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
+
+
+class RAGRecallTest(unittest.TestCase):
+    def test_natural_language_architecture_queries_hit_expected_files(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        retriever = RAGRetriever(index)
+        cases = [
+            ("项目入口在哪里", {"src/main_entrypoint.py"}),
+            ("布线核心模块是什么", {"src/routing/rw_route.py"}),
+            ("模块布局和硬宏布局", {"src/placement/block_placer.py"}),
+            ("是否依赖 Vivado 外部工具", {"src/integrations/vivado_tools.py"}),
+            ("时序分析延迟模型", {"src/timing/timing_model.py"}),
+            ("partial DFX routing", {"src/routing/partial_dfx_router.py"}),
+            ("项目是否支持完整 RTL 流程", {"src/rtl/rtl_flow.py"}),
+            ("器件资源在哪里加载", {"src/device/device_resources.py"}),
+        ]
+        hits = 0
+        for query, expected_paths in cases:
+            results = retriever.search(query, top_k=10)
+            result_paths = {result.chunk.path for result in results if result.chunk.path}
+            if expected_paths.intersection(result_paths):
+                hits += 1
+        self.assertGreaterEqual(hits, 6)
+
+    def test_rag_context_includes_real_source_lines_for_llm(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        context = RAGRetriever(index).context("项目入口在哪里", top_k=4, max_chars=6000)
+        self.assertIn("kind=source", context)
+        self.assertIn("Code:", context)
+        self.assertIn("class MainEntrypoint", context)
+
+    def test_offline_qa_prints_source_context(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer("布局器处理普通单元还是硬宏", top_k=4)
+        self.assertIn("源码上下文", answer.answer)
+        self.assertIn("return \"module layout and hard macro placement\"", answer.answer)
+
+    def test_offline_qa_source_excerpt_is_centered_on_hit_line(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer("项目入口在哪里", top_k=2)
+        self.assertIn("class StandaloneEntrypoint", answer.answer)
+        self.assertIn("return MainEntrypoint().run()", answer.answer)
 
 
 class EnvConfigTest(unittest.TestCase):
