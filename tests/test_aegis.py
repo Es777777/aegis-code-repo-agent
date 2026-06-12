@@ -9,6 +9,7 @@ import unittest
 import os
 from pathlib import Path
 
+from aegis.artifacts import load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, load_env_file
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
@@ -62,8 +63,10 @@ class KnowledgeBuilderTest(unittest.TestCase):
         index = RAGIndexBuilder(knowledge).build()
         answer = RepositoryQAAgent(knowledge, index).answer("用户创建接口在哪里，数据写入哪里？")
         self.assertFalse(answer.used_llm)
-        self.assertIn("离线 RAG", answer.answer)
+        self.assertIn("Offline RAG", answer.answer)
         self.assertTrue(answer.results)
+        self.assertTrue(answer.context_pack.blocks)
+        self.assertTrue(any(block.chunk_kind == "source" for block in answer.context_pack.blocks))
 
     def test_include_exclude_scope_controls_scanned_files(self) -> None:
         knowledge = KnowledgeBuilder(
@@ -98,6 +101,15 @@ class WorkflowTest(unittest.TestCase):
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
+
+    def test_saved_artifacts_can_be_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            loaded = load_analysis_result(result.output_dir)
+            rag = load_rag_index(result.output_dir / "rag_index.json")
+            self.assertEqual(loaded.knowledge.repo_name, "sample_repo")
+            self.assertEqual(loaded.output_dir, result.output_dir)
+            self.assertGreater(len(rag.chunks), 0)
 
     def test_report_includes_scan_scope_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,16 +154,23 @@ class RAGRecallTest(unittest.TestCase):
     def test_rag_context_includes_real_source_lines_for_llm(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()
-        context = RAGRetriever(index).context("项目入口在哪里", top_k=4, max_chars=6000)
+        retriever = RAGRetriever(index)
+        context = retriever.context("项目入口在哪里", top_k=4, max_chars=6000)
         self.assertIn("kind=source", context)
         self.assertIn("Code:", context)
         self.assertIn("class MainEntrypoint", context)
+        pack = retriever.context_pack("项目入口在哪里", top_k=4, max_chars=6000)
+        self.assertGreater(len(pack.blocks), 0)
+        self.assertEqual(pack.blocks[0].chunk_kind, "source")
+        self.assertEqual(pack.blocks[0].path, "src/main_entrypoint.py")
+        self.assertIn("class MainEntrypoint", pack.blocks[0].content)
+        self.assertGreaterEqual(pack.blocks[0].start_line or 0, 1)
 
     def test_offline_qa_prints_source_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()
         answer = RepositoryQAAgent(knowledge, index).answer("布局器处理普通单元还是硬宏", top_k=4)
-        self.assertIn("源码上下文", answer.answer)
+        self.assertIn("Source context", answer.answer)
         self.assertIn("return \"module layout and hard macro placement\"", answer.answer)
 
     def test_offline_qa_source_excerpt_is_centered_on_hit_line(self) -> None:
@@ -376,6 +395,10 @@ class CLITest(unittest.TestCase):
             self.assertEqual(payload["repo"], "eda_repo")
             self.assertIn("qa", payload)
             self.assertFalse(payload["qa"]["used_llm"])
+            self.assertIn("context_pack", payload["qa"])
+            context_blocks = payload["qa"]["context_pack"]["blocks"]
+            self.assertTrue(context_blocks)
+            self.assertTrue(any("class StandaloneEntrypoint" in block["content"] for block in context_blocks))
             excerpts = "\n".join(
                 line
                 for result in payload["qa"]["results"]
@@ -440,6 +463,65 @@ class CLITest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["stats"]["file_count"], 2)
+
+    def test_ask_from_output_reuses_saved_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--ask",
+                    "项目入口在哪里",
+                    "--top-k",
+                    "2",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["repo"], "eda_repo")
+            self.assertIn("qa", payload)
+            excerpts = "\n".join(
+                line
+                for result in payload["qa"]["results"]
+                for line in result["source_excerpt"]
+            )
+            self.assertIn("class StandaloneEntrypoint", excerpts)
+
+    def test_skill_wrapper_ask_from_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "skills/aegis-repo-analyst/scripts/run_aegis.py",
+                    "ask",
+                    "项目入口在哪里",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--top-k",
+                    "2",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["repo"], "eda_repo")
 
     def test_eval_json_output_is_machine_readable_and_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -36,6 +36,17 @@
 - `architecture.mmd`：Mermaid 架构图。
 - `rag_index.json`：面向 Agent 问答的检索索引。
 
+## 产物复用
+
+`--from-output` 可以从已有输出目录读取 `knowledge.json`、`findings.json` 和 `rag_index.json`，跳过重新扫描与 Agent 分析，直接执行 RAG 问答、CodeGraph 追踪或评测。这适合大仓库的多轮追问、前端交互和比赛评测脚本。
+
+CLI 示例：
+
+```powershell
+python main.py --from-output output\aegis\sample_repo --ask "用户创建接口在哪里？"
+python main.py --from-output output\aegis\sample_repo --trace-interface /users --json
+```
+
 ## Doctor
 
 `--doctor` 是轻量预检入口，不执行完整仓库分析。它检查 Python 版本、仓库路径、输出目录写权限、Git 可用性和可选 LLM 配置状态，支持 JSON 输出和非零退出码。
@@ -187,3 +198,29 @@ python main.py <repo> --eval --eval-fail-under 0.9
 - `AEGIS_SERVE_DIR`
 - `AEGIS_SERVE_HOST`
 - `AEGIS_SERVE_PORT`
+
+## RAG Context Pack
+
+The RAG layer exposes a prompt-ready context pack for agents. Retrieval still
+uses repository, file, symbol, interface, data, and CodeGraph chunks, but the
+final package prefers real `source` chunks so the downstream LLM sees file
+content, not only summaries.
+
+Context pack fields:
+
+- `query`
+- `max_chars` and `used_chars`
+- `blocks[*].path`
+- `blocks[*].start_line` / `end_line`
+- `blocks[*].content` with line-numbered source
+- `blocks[*].retrieved_from` to show which semantic chunk led to the source
+
+CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
+uses `AEGIS_RAG_CONTEXT_CHARS`.
+
+```powershell
+python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json
+```
+
+The JSON response places this under `qa.context_pack`, so another agent can
+consume the code context directly.

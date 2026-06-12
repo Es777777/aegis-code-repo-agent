@@ -109,6 +109,13 @@ python main.py examples\sample_repo --trace-interface /users
 python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？"
 ```
 
+复用已有分析产物进行问答或追踪，避免重新扫描大仓库：
+
+```powershell
+python main.py --from-output output\aegis\sample_repo --ask "用户创建接口在哪里？"
+python main.py --from-output output\aegis\sample_repo --trace-interface /users
+```
+
 机器可读输出，适合评测脚本、前端或其他 Agent 调用：
 
 ```powershell
@@ -340,3 +347,31 @@ python -m unittest discover -s tests -v
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+## RAG Context Pack
+
+`--ask` now builds a prompt-ready `context_pack` instead of only returning short
+retrieval summaries. Each context block contains:
+
+- `path`, `start_line`, `end_line`
+- the full retrieved source chunk content with line numbers
+- the original retrieved chunk id and matched terms
+- a configurable character budget
+
+Examples:
+
+```powershell
+python main.py examples\sample_repo --ask "Where is user creation implemented?" --json
+python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json
+```
+
+Configure the default budget with:
+
+```env
+AEGIS_RAG_CONTEXT_CHARS=16000
+```
+
+Downstream agents should consume `qa.context_pack.blocks[*].content` directly
+when constructing LLM prompts. The LLM QA path already uses this same context
+pack, so the model receives real repository file content rather than file names
+or symbolic summaries alone.

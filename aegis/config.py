@@ -84,6 +84,7 @@ class AegisConfig:
     repo_path: str | None = None
     output_dir: str = "output/aegis"
     max_files: int = 1500
+    rag_context_chars: int = 16000
     include: list[str] | None = None
     exclude: list[str] | None = None
     use_cache: bool = True
@@ -98,6 +99,7 @@ class AegisConfig:
             repo_path=os.getenv("AEGIS_REPO_PATH"),
             output_dir=os.getenv("AEGIS_OUTPUT_DIR", "output/aegis"),
             max_files=env_int("AEGIS_MAX_FILES", 1500),
+            rag_context_chars=env_int("AEGIS_RAG_CONTEXT_CHARS", 16000),
             include=env_list("AEGIS_INCLUDE"),
             exclude=env_list("AEGIS_EXCLUDE"),
             use_cache=env_bool("AEGIS_USE_CACHE", True),

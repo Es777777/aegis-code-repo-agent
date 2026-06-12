@@ -6,15 +6,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from aegis.artifacts import load_analysis_result, load_rag_index
 from aegis.config import AegisConfig, LLMConfig, load_env_file
 from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
-from aegis.rag.qa import QAAnswer
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
-from aegis.rag.qa import RepositoryQAAgent
+from aegis.rag.qa import QAAnswer, RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
 from aegis.server import serve
 from aegis.utils import write_json
@@ -25,46 +25,39 @@ def parse_args() -> argparse.Namespace:
     config = AegisConfig.from_env()
     parser = argparse.ArgumentParser(
         prog="aegis",
-        description="AEGIS 2.0 MVP: multi-agent repository reading and analysis.",
+        description="AEGIS: multi-agent repository reading and analysis.",
     )
-    parser.add_argument("repo", nargs="?", default=config.repo_path, help="要分析的本地代码仓库路径")
-    parser.add_argument("--out", default=config.output_dir, help="输出目录，默认 output/aegis")
-    parser.add_argument("--max-files", type=int, default=config.max_files, help="最大扫描文件数")
-    parser.add_argument(
-        "--include",
-        action="append",
-        default=list(config.include or []),
-        help="只扫描匹配的 glob，可重复，例如 --include 'src/**/*.py'",
-    )
-    parser.add_argument(
-        "--exclude",
-        action="append",
-        default=list(config.exclude or []),
-        help="排除匹配的 glob，可重复，例如 --exclude '*_test.py'",
-    )
-    parser.add_argument("--no-cache", action="store_true", default=not config.use_cache, help="禁用文件解析缓存")
-    parser.add_argument("--llm", action="store_true", default=bool(config.llm and config.llm.enabled), help="启用可选 LLM 综合分析")
+    parser.add_argument("repo", nargs="?", default=config.repo_path, help="Local repository path")
+    parser.add_argument("--out", default=config.output_dir, help="Output root, default: output/aegis")
+    parser.add_argument("--from-output", help="Load existing output/aegis/<repo> artifacts and skip scanning")
+    parser.add_argument("--max-files", type=int, default=config.max_files, help="Maximum files to scan")
+    parser.add_argument("--include", action="append", default=list(config.include or []), help="Include glob; repeatable")
+    parser.add_argument("--exclude", action="append", default=list(config.exclude or []), help="Exclude glob; repeatable")
+    parser.add_argument("--no-cache", action="store_true", default=not config.use_cache, help="Disable parser cache")
+    parser.add_argument("--llm", action="store_true", default=bool(config.llm and config.llm.enabled), help="Enable optional LLM synthesis")
     parser.add_argument(
         "--serve",
         nargs="?",
         const=config.serve_dir or config.output_dir,
         default=None,
-        help="启动静态报告服务器，传入要服务的目录；不传目录时读取 AEGIS_SERVE_DIR",
+        help="Serve a report directory over HTTP",
     )
-    parser.add_argument("--host", default=config.serve_host, help="报告服务器 host")
-    parser.add_argument("--port", type=int, default=config.serve_port, help="报告服务器 port")
-    parser.add_argument("--doctor", action="store_true", help="检查本地环境、仓库路径、输出目录和可选 LLM 配置")
-    parser.add_argument("--trace-interface", help="分析后输出接口链路，例如 /users")
-    parser.add_argument("--ask", help="分析后使用 RAG Agent 回答仓库问题")
-    parser.add_argument("--top-k", type=int, default=8, help="RAG 检索返回数量")
-    parser.add_argument("--eval", action="store_true", help="运行 RAG/CodeGraph 内置或自定义评测")
-    parser.add_argument("--eval-suite", help="评测用例 JSON 文件；不传则使用当前示例仓库的内置用例")
+    parser.add_argument("--host", default=config.serve_host, help="Report server host")
+    parser.add_argument("--port", type=int, default=config.serve_port, help="Report server port")
+    parser.add_argument("--doctor", action="store_true", help="Run environment and configuration checks")
+    parser.add_argument("--trace-interface", help="Trace an interface route, for example /users")
+    parser.add_argument("--ask", help="Ask the repository with the RAG agent")
+    parser.add_argument("--top-k", type=int, default=8, help="Number of RAG retrieval results")
     parser.add_argument(
-        "--eval-fail-under",
-        type=float,
-        help="评测 overall_score 低于该阈值时以非零状态退出，例如 0.85",
+        "--context-chars",
+        type=int,
+        default=config.rag_context_chars,
+        help="RAG context pack character budget passed to LLM and JSON payloads",
     )
-    parser.add_argument("--json", action="store_true", help="以 JSON 输出分析摘要、接口追踪或 RAG 问答结果")
+    parser.add_argument("--eval", action="store_true", help="Run built-in or custom RAG/CodeGraph evaluation")
+    parser.add_argument("--eval-suite", help="Evaluation suite JSON file")
+    parser.add_argument("--eval-fail-under", type=float, help="Fail when overall_score is below this 0..1 threshold")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     return parser.parse_args()
 
 
@@ -140,8 +133,16 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "question": answer.question,
         "answer": answer.answer,
         "used_llm": answer.used_llm,
+        "context_pack": answer.context_pack.to_dict(),
         "results": [retrieval_payload(agent, item) for item in answer.results],
     }
+
+
+def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
+    rag_index_path = result.output_dir / "rag_index.json"
+    if prefer_saved and rag_index_path.exists():
+        return load_rag_index(rag_index_path)
+    return RAGIndexBuilder(result.knowledge).build()
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -178,7 +179,9 @@ def quality_gate_payload(metrics: dict[str, Any], threshold: float | None) -> di
 def main() -> int:
     args = parse_args()
     if args.eval_fail_under is not None and not 0 <= args.eval_fail_under <= 1:
-        raise SystemExit("--eval-fail-under 必须在 0 到 1 之间，例如 0.85")
+        raise SystemExit("--eval-fail-under must be between 0 and 1, for example 0.85")
+    if args.context_chars <= 0:
+        raise SystemExit("--context-chars must be a positive integer")
     if args.serve:
         serve(Path(args.serve), host=args.host, port=args.port)
         return 0
@@ -194,21 +197,26 @@ def main() -> int:
         else:
             print_doctor(payload)
         return 0 if payload["passed"] else 2
-    if not args.repo:
-        raise SystemExit("缺少仓库路径。用法：python main.py <repo-path> 或 python main.py --serve <report-dir>")
-    repo = Path(args.repo)
-    if not repo.exists() or not repo.is_dir():
-        raise SystemExit(f"仓库路径不存在或不是目录：{repo}")
-    workflow = AegisWorkflow(
-        repo,
-        output_root=Path(args.out),
-        max_files=args.max_files,
-        include=args.include,
-        exclude=args.exclude,
-        use_cache=not args.no_cache,
-        llm_config=LLMConfig.from_env(enabled=args.llm),
-    )
-    result = workflow.run()
+
+    if args.from_output:
+        result = load_analysis_result(Path(args.from_output))
+    elif not args.repo:
+        raise SystemExit("Missing repository path. Usage: python main.py <repo-path>")
+    else:
+        repo = Path(args.repo)
+        if not repo.exists() or not repo.is_dir():
+            raise SystemExit(f"Repository path does not exist or is not a directory: {repo}")
+        workflow = AegisWorkflow(
+            repo,
+            output_root=Path(args.out),
+            max_files=args.max_files,
+            include=args.include,
+            exclude=args.exclude,
+            use_cache=not args.no_cache,
+            llm_config=LLMConfig.from_env(enabled=args.llm),
+        )
+        result = workflow.run()
+
     payload = result_payload(result)
     trace = []
     answer = None
@@ -220,26 +228,33 @@ def main() -> int:
         payload["trace"] = trace_payload(args.trace_interface, trace)
     if args.ask:
         llm_config = LLMConfig.from_env(enabled=args.llm)
-        rag_index = RAGIndexBuilder(result.knowledge).build()
+        rag_index = get_rag_index(result, prefer_saved=bool(args.from_output))
         qa = RepositoryQAAgent(
             result.knowledge,
             rag_index,
             llm=LLMClient(llm_config) if llm_config.enabled else None,
         )
-        answer = qa.answer(args.ask, top_k=args.top_k)
+        answer = qa.answer(
+            args.ask,
+            top_k=args.top_k,
+            max_context_chars=args.context_chars,
+        )
         payload["qa"] = qa_payload(qa, answer)
+
     should_eval = args.eval or args.eval_suite or args.eval_fail_under is not None
     if should_eval:
         if rag_index is None:
-            rag_index = RAGIndexBuilder(result.knowledge).build()
+            rag_index = get_rag_index(result, prefer_saved=bool(args.from_output))
         suite = load_suite(Path(args.eval_suite)) if args.eval_suite else builtin_suite(result.knowledge.repo_name)
         evaluation = Evaluator(result.knowledge, rag_index).run(suite)
         write_json(result.output_dir / "evaluation.json", evaluation)
         payload["evaluation"] = evaluation
         payload["quality_gate"] = quality_gate_payload(evaluation["metrics"], args.eval_fail_under)
+
     if args.json:
         print_json(payload)
         return 0 if payload.get("quality_gate", {}).get("passed", True) else 2
+
     print(f"AEGIS analysis complete: {result.output_dir}")
     for key in ("report", "html", "mermaid", "knowledge", "findings", "rag_index"):
         print(f"- {key.replace('_', ' ')}: {payload['outputs'][key]}")
@@ -248,17 +263,18 @@ def main() -> int:
         if not trace:
             print("- no matching interface found")
         for node in trace:
-            location = (
-                f" ({node.path}:{node.line})"
-                if node.path and node.line
-                else f" ({node.path})"
-                if node.path
-                else ""
-            )
+            if node.path and node.line:
+                location = f" ({node.path}:{node.line})"
+            elif node.path:
+                location = f" ({node.path})"
+            else:
+                location = ""
             print(f"- {node.kind}: {node.name}{location}")
-    if args.ask:
+    if args.ask and answer:
         print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
         print(answer.answer)
+        print("\nContext pack:")
+        print(answer.context_pack.render())
     if should_eval:
         metrics = payload["evaluation"]["metrics"]
         print("\nAEGIS evaluation:")

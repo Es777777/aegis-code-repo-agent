@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import re
+from typing import Any
 
 from aegis.rag.index import RAGChunk, RAGIndex
 
@@ -51,6 +52,84 @@ class RetrievalResult:
     matched_terms: list[str]
 
 
+@dataclass
+class RAGContextBlock:
+    rank: int
+    chunk_id: str
+    chunk_kind: str
+    title: str
+    path: str | None
+    start_line: int | None
+    end_line: int | None
+    score: float
+    matched_terms: list[str]
+    retrieved_from: str
+    content: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rank": self.rank,
+            "chunk_id": self.chunk_id,
+            "chunk_kind": self.chunk_kind,
+            "title": self.title,
+            "path": self.path,
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+            "score": self.score,
+            "matched_terms": self.matched_terms,
+            "retrieved_from": self.retrieved_from,
+            "content": self.content,
+        }
+
+
+@dataclass
+class RAGContextPack:
+    query: str
+    max_chars: int
+    used_chars: int
+    blocks: list[RAGContextBlock]
+    dropped_blocks: int = 0
+
+    def render(self) -> str:
+        lines = [
+            "AEGIS RAG CONTEXT PACK",
+            f"Query: {self.query}",
+            f"Budget: {self.used_chars}/{self.max_chars} chars",
+            "Instruction: answer only from the files and line ranges below; cite paths and lines.",
+            "",
+        ]
+        for block in self.blocks:
+            location = block.path or "repository"
+            if block.start_line and block.end_line:
+                location = f"{location}:{block.start_line}-{block.end_line}"
+            elif block.start_line:
+                location = f"{location}:{block.start_line}"
+            lines.extend(
+                [
+                    f"[{block.rank}] {block.chunk_kind} {location} score={block.score:.2f}",
+                    f"kind={block.chunk_kind} path={block.path or ''} line={block.start_line or ''}",
+                    f"title: {block.title}",
+                    f"retrieved_from: {block.retrieved_from}",
+                    f"matched_terms: {', '.join(block.matched_terms) or 'none'}",
+                    "content:",
+                    block.content,
+                    "",
+                ]
+            )
+        if self.dropped_blocks:
+            lines.append(f"Dropped blocks because of context budget: {self.dropped_blocks}")
+        return "\n".join(lines).strip()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "max_chars": self.max_chars,
+            "used_chars": self.used_chars,
+            "dropped_blocks": self.dropped_blocks,
+            "blocks": [block.to_dict() for block in self.blocks],
+        }
+
+
 class RAGRetriever:
     def __init__(self, index: RAGIndex) -> None:
         self.index = index
@@ -96,27 +175,78 @@ class RAGRetriever:
         return ranked[:top_k]
 
     def context(self, query: str, *, top_k: int = 8, max_chars: int = 12000) -> str:
-        parts: list[str] = []
+        return self.context_pack(query, top_k=top_k, max_chars=max_chars).render()
+
+    def context_pack(
+        self,
+        query: str,
+        *,
+        top_k: int = 8,
+        max_chars: int = 12000,
+    ) -> RAGContextPack:
         candidates = self.search(query, top_k=max(top_k * 3, top_k + 8))
         context_results = self.with_source_context(candidates, max_results=top_k + min(top_k, 4))
-        for idx, result in enumerate(context_results, start=1):
-            chunk = result.chunk
-            evidence = "; ".join(
-                f"{ev.path}:{ev.line} {ev.snippet}" for ev in chunk.evidence[:3]
+        blocks: list[RAGContextBlock] = []
+        seen: set[str] = set()
+        used_chars = 0
+        dropped = 0
+        for result in context_results:
+            block_chunk = self._context_chunk(result.chunk)
+            if block_chunk.id in seen:
+                continue
+            seen.add(block_chunk.id)
+            start_line = self._line_value(block_chunk.metadata.get("start_line"), block_chunk.line)
+            end_line = self._line_value(block_chunk.metadata.get("end_line"), start_line)
+            header_chars = 220
+            remaining = max_chars - used_chars - header_chars
+            if remaining < 200:
+                dropped += 1
+                continue
+            content = block_chunk.text
+            if len(content) > remaining:
+                content = content[: max(0, remaining - 40)].rstrip() + "\n...[truncated by context budget]"
+            retrieved_from = (
+                result.chunk.id
+                if result.chunk.id == block_chunk.id
+                else f"{result.chunk.id} -> {block_chunk.id}"
             )
-            parts.append(
-                "\n".join(
-                    [
-                        f"[{idx}] {chunk.title} score={result.score:.2f}",
-                        f"kind={chunk.kind} path={chunk.path or ''} line={chunk.line or ''}",
-                        chunk.text,
-                        f"evidence: {evidence}" if evidence else "evidence: none",
-                    ]
-                )
+            block = RAGContextBlock(
+                rank=len(blocks) + 1,
+                chunk_id=block_chunk.id,
+                chunk_kind=block_chunk.kind,
+                title=block_chunk.title,
+                path=block_chunk.path,
+                start_line=start_line,
+                end_line=end_line,
+                score=result.score,
+                matched_terms=result.matched_terms,
+                retrieved_from=retrieved_from,
+                content=content,
             )
-            if len("\n\n".join(parts)) >= max_chars:
-                break
-        return "\n\n".join(parts)[:max_chars]
+            blocks.append(block)
+            used_chars += len(block.content) + header_chars
+        return RAGContextPack(
+            query=query,
+            max_chars=max_chars,
+            used_chars=min(used_chars, max_chars),
+            blocks=blocks,
+            dropped_blocks=dropped,
+        )
+
+    def _context_chunk(self, chunk: RAGChunk) -> RAGChunk:
+        if chunk.kind == "source":
+            return chunk
+        companion = self.source_companion(chunk)
+        return companion or chunk
+
+    @staticmethod
+    def _line_value(value: object, fallback: int | None = None) -> int | None:
+        if value is None:
+            return fallback
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return fallback
 
     def with_source_context(
         self,

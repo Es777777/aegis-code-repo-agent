@@ -37,13 +37,15 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("--json", action="store_true")
 
     ask = sub.add_parser("ask")
-    ask.add_argument("repo")
+    ask.add_argument("repo", nargs="?")
     ask.add_argument("question")
+    ask.add_argument("--from-output")
     ask.add_argument("--max-files", default="1500")
     ask.add_argument("--out", default="output/aegis")
     ask.add_argument("--include", action="append", default=[])
     ask.add_argument("--exclude", action="append", default=[])
     ask.add_argument("--top-k", default="8")
+    ask.add_argument("--context-chars", default="16000")
     ask.add_argument("--llm", action="store_true")
     ask.add_argument("--no-cache", action="store_true")
     ask.add_argument("--eval", action="store_true")
@@ -52,8 +54,9 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("--json", action="store_true")
 
     trace = sub.add_parser("trace")
-    trace.add_argument("repo")
+    trace.add_argument("repo", nargs="?")
     trace.add_argument("route")
+    trace.add_argument("--from-output")
     trace.add_argument("--max-files", default="1500")
     trace.add_argument("--out", default="output/aegis")
     trace.add_argument("--include", action="append", default=[])
@@ -65,7 +68,8 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("--json", action="store_true")
 
     eval_cmd = sub.add_parser("eval")
-    eval_cmd.add_argument("repo")
+    eval_cmd.add_argument("repo", nargs="?")
+    eval_cmd.add_argument("--from-output")
     eval_cmd.add_argument("--max-files", default="1500")
     eval_cmd.add_argument("--out", default="output/aegis")
     eval_cmd.add_argument("--include", action="append", default=[])
@@ -97,7 +101,12 @@ def main() -> int:
             command.append("--json")
         return run(command, cwd=root)
 
-    common = [args.repo, "--max-files", str(args.max_files), "--out", args.out]
+    if getattr(args, "from_output", None):
+        common = ["--from-output", args.from_output, "--out", args.out]
+    else:
+        if not args.repo:
+            raise SystemExit(f"{args.command} requires <repo> unless --from-output is provided")
+        common = [args.repo, "--max-files", str(args.max_files), "--out", args.out]
     for pattern in getattr(args, "include", []):
         common.extend(["--include", pattern])
     for pattern in getattr(args, "exclude", []):
@@ -116,7 +125,15 @@ def main() -> int:
     if args.command == "analyze":
         return run(common, cwd=root)
     if args.command == "ask":
-        command = [*common, "--ask", args.question, "--top-k", str(args.top_k)]
+        command = [
+            *common,
+            "--ask",
+            args.question,
+            "--top-k",
+            str(args.top_k),
+            "--context-chars",
+            str(args.context_chars),
+        ]
         if args.llm:
             command.append("--llm")
         return run(command, cwd=root)
