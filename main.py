@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis.config import AegisConfig, LLMConfig, load_env_file
+from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
 from aegis.rag.qa import QAAnswer
@@ -15,6 +16,7 @@ from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
 from aegis.server import serve
+from aegis.utils import write_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trace-interface", help="分析后输出接口链路，例如 /users")
     parser.add_argument("--ask", help="分析后使用 RAG Agent 回答仓库问题")
     parser.add_argument("--top-k", type=int, default=8, help="RAG 检索返回数量")
+    parser.add_argument("--eval", action="store_true", help="运行 RAG/CodeGraph 内置或自定义评测")
+    parser.add_argument("--eval-suite", help="评测用例 JSON 文件；不传则使用当前示例仓库的内置用例")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出分析摘要、接口追踪或 RAG 问答结果")
     return parser.parse_args()
 
@@ -54,6 +58,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "knowledge": str(output_dir / "knowledge.json"),
         "findings": str(output_dir / "findings.json"),
         "rag_index": str(output_dir / "rag_index.json"),
+        "evaluation": str(output_dir / "evaluation.json"),
     }
 
 
@@ -124,6 +129,12 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def metric_ratio(hits: int, total: int, rate: float) -> str:
+    if total <= 0:
+        return "n/a"
+    return f"{hits}/{total} ({rate:.2%})"
+
+
 def main() -> int:
     args = parse_args()
     if args.serve:
@@ -146,6 +157,7 @@ def main() -> int:
     trace = []
     answer = None
     qa = None
+    rag_index = None
     if args.trace_interface:
         query = CodeGraphQuery(result.knowledge.code_graph)
         trace = query.trace_interface(args.trace_interface)
@@ -160,6 +172,13 @@ def main() -> int:
         )
         answer = qa.answer(args.ask, top_k=args.top_k)
         payload["qa"] = qa_payload(qa, answer)
+    if args.eval or args.eval_suite:
+        if rag_index is None:
+            rag_index = RAGIndexBuilder(result.knowledge).build()
+        suite = load_suite(Path(args.eval_suite)) if args.eval_suite else builtin_suite(result.knowledge.repo_name)
+        evaluation = Evaluator(result.knowledge, rag_index).run(suite)
+        write_json(result.output_dir / "evaluation.json", evaluation)
+        payload["evaluation"] = evaluation
     if args.json:
         print_json(payload)
         return 0
@@ -182,6 +201,18 @@ def main() -> int:
     if args.ask:
         print(f"\nAEGIS RAG answer ({'LLM' if answer.used_llm else 'offline'}):")
         print(answer.answer)
+    if args.eval or args.eval_suite:
+        metrics = payload["evaluation"]["metrics"]
+        print("\nAEGIS evaluation:")
+        print(f"- suite: {payload['evaluation']['suite']}")
+        print(f"- rag recall: {metric_ratio(metrics['rag_hits'], metrics['rag_cases'], metrics['rag_recall'])}")
+        print(f"- trace success: {metric_ratio(metrics['trace_hits'], metrics['trace_cases'], metrics['trace_success_rate'])}")
+        print(
+            "- source context coverage: "
+            f"{metric_ratio(metrics['source_context_hits'], metrics['source_context_cases'], metrics['source_context_coverage'])}"
+        )
+        print(f"- overall score: {metrics['overall_score']:.2%}")
+        print(f"- evaluation: {payload['outputs']['evaluation']}")
     return 0
 
 

@@ -84,6 +84,16 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py trace <repo-path> /users -
 
 This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file -> downstream imports/calls/data nodes.
 
+### Evaluate Retrieval And Trace Quality
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path>
+python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --suite suite.json --json
+```
+
+Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`.
+
 ### Serve HTML Report
 
 ```powershell

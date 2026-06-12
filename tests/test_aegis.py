@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from aegis.config import AegisConfig, load_env_file
+from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.orchestrator.workflow import AegisWorkflow
@@ -126,6 +127,40 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("return MainEntrypoint().run()", answer.answer)
 
 
+class EvaluationTest(unittest.TestCase):
+    def test_builtin_evaluation_reports_recall_and_source_coverage(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        evaluation = Evaluator(knowledge, index).run(builtin_suite("eda_repo"))
+        metrics = evaluation["metrics"]
+        self.assertEqual(metrics["rag_cases"], 8)
+        self.assertGreaterEqual(metrics["rag_recall"], 0.75)
+        self.assertGreaterEqual(metrics["source_context_coverage"], 0.75)
+
+    def test_custom_eval_suite_file_loads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            suite_path = Path(tmp) / "suite.json"
+            suite_path.write_text(
+                json.dumps(
+                    {
+                        "name": "custom",
+                        "rag": [
+                            {
+                                "question": "项目入口在哪里",
+                                "expected_paths": ["src/main_entrypoint.py"],
+                                "top_k": 5,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            suite = load_suite(suite_path)
+            self.assertEqual(suite.name, "custom")
+            self.assertEqual(suite.rag[0].top_k, 5)
+
+
 class EnvConfigTest(unittest.TestCase):
     def test_load_env_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,6 +254,35 @@ class CLITest(unittest.TestCase):
             self.assertIn("trace", payload)
             names = [node["name"] for node in payload["trace"]["nodes"]]
             self.assertTrue(any("/users" in name for name in names))
+
+    def test_eval_json_output_is_machine_readable_and_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/eda_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--eval",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertIn("evaluation", payload)
+            self.assertGreaterEqual(payload["evaluation"]["metrics"]["rag_recall"], 0.75)
+            evaluation_path = Path(payload["outputs"]["evaluation"])
+            self.assertTrue(evaluation_path.exists())
 
 
 if __name__ == "__main__":
