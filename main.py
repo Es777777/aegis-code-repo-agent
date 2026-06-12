@@ -19,7 +19,7 @@ from aegis.rag.qa import QAAnswer, RepositoryQAAgent
 from aegis.rag.retriever import RetrievalResult
 from aegis.readiness import ReadinessAssessor
 from aegis.server import serve
-from aegis.summary import write_run_summary
+from aegis.summary import stabilize_manifest_and_summary, write_run_summary
 from aegis.utils import write_json
 
 
@@ -327,7 +327,7 @@ def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
 
 def refresh_manifest(result: Any, args: argparse.Namespace) -> None:
     run_config = analysis_run_manifest(result, args)
-    manifest = build_manifest(
+    return build_manifest(
         result,
         max_files=run_config["max_files"],
         include=run_config["include"],
@@ -337,7 +337,6 @@ def refresh_manifest(result: Any, args: argparse.Namespace) -> None:
         events_count=run_config["events_count"],
         post_run=post_run_manifest(args),
     )
-    write_json(result.output_dir / "manifest.json", manifest)
 
 
 def analysis_run_manifest(result: Any, args: argparse.Namespace) -> dict[str, Any]:
@@ -550,8 +549,13 @@ def main() -> int:
         write_json(result.output_dir / "readiness.json", readiness)
         payload["readiness"] = readiness
     if args.ready or should_eval or should_impact or ask_question:
-        refresh_manifest(result, args)
-    write_run_summary(result, payload=payload)
+        stabilize_manifest_and_summary(
+            result,
+            manifest_builder=lambda: refresh_manifest(result, args),
+            payload=payload,
+        )
+    else:
+        write_run_summary(result, payload=payload)
 
     if args.json:
         print_json(payload)

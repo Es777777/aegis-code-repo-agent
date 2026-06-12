@@ -282,6 +282,10 @@ class WorkflowTest(unittest.TestCase):
             self.assertTrue(manifest["artifacts"]["knowledge.json"]["exists"])
             self.assertTrue(manifest["artifacts"]["run_summary.json"]["exists"])
             self.assertEqual(
+                manifest["artifacts"]["run_summary.json"]["sha256"],
+                file_sha256(second.output_dir / "run_summary.json"),
+            )
+            self.assertEqual(
                 manifest["artifacts"]["knowledge.json"]["sha256"],
                 file_sha256(second.output_dir / "knowledge.json"),
             )
@@ -1222,6 +1226,10 @@ class CLITest(unittest.TestCase):
             self.assertTrue(manifest["artifacts"]["context_pack.md"]["exists"])
             self.assertTrue(manifest["artifacts"]["llm_prompt.md"]["exists"])
             self.assertTrue(manifest["artifacts"]["run_summary.json"]["exists"])
+            self.assertEqual(
+                manifest["artifacts"]["run_summary.json"]["sha256"],
+                file_sha256(Path(payload["outputs"]["run_summary"])),
+            )
             self.assertEqual(manifest["run"]["post_run"]["ask"], qa_artifact["question"])
             self.assertEqual(manifest["run"]["post_run"]["top_k"], 2)
             self.assertEqual(manifest["run"]["post_run"]["context_chars"], 48000)

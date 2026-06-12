@@ -21,7 +21,7 @@ from aegis.models import AnalysisResult, Finding
 from aegis.orchestrator.context import ContextRouter
 from aegis.rag.index import RAGIndexBuilder
 from aegis.reporting.writer import ReportWriter
-from aegis.summary import write_run_summary
+from aegis.summary import stabilize_manifest_and_summary
 from aegis.utils import slugify, write_json
 
 
@@ -96,17 +96,18 @@ class AegisWorkflow:
         self._event("report-written", str(self.output_dir / "report.md"))
         write_json(self.output_dir / "events.json", self.events)
         result = AnalysisResult(knowledge=knowledge, findings=reviewed, output_dir=self.output_dir)
-        manifest = build_manifest(
+        stabilize_manifest_and_summary(
             result,
-            max_files=self.max_files,
-            include=self.include,
-            exclude=self.exclude,
-            use_cache=self.use_cache,
-            llm_enabled=self.llm_config.enabled,
-            events_count=len(self.events),
+            manifest_builder=lambda: build_manifest(
+                result,
+                max_files=self.max_files,
+                include=self.include,
+                exclude=self.exclude,
+                use_cache=self.use_cache,
+                llm_enabled=self.llm_config.enabled,
+                events_count=len(self.events),
+            ),
         )
-        write_json(self.output_dir / "manifest.json", manifest)
-        write_run_summary(result)
         return result
 
     def _event(self, kind: str, message: str) -> None:

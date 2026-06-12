@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
+from typing import Callable
 from typing import Any
 
 from aegis.models import AnalysisResult
-from aegis.utils import write_json
+from aegis.utils import file_sha256, write_json
 
 
 SUMMARY_ARTIFACTS = [
@@ -44,6 +45,31 @@ def write_run_summary(
         artifact["size"] = current_size
         write_json(summary_path, summary)
     return summary
+
+
+def stabilize_manifest_and_summary(
+    result: AnalysisResult,
+    *,
+    manifest_builder: Callable[[], dict[str, Any]],
+    payload: dict[str, Any] | None = None,
+    max_rounds: int = 6,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    manifest_path = result.output_dir / "manifest.json"
+    summary_path = result.output_dir / "run_summary.json"
+    previous_state: tuple[str, str] | None = None
+    manifest: dict[str, Any] = {}
+    summary: dict[str, Any] = {}
+    for _ in range(max_rounds):
+        manifest = manifest_builder()
+        write_json(manifest_path, manifest)
+        summary = write_run_summary(result, payload=payload)
+        if not manifest_path.exists() or not summary_path.exists():
+            break
+        state = (file_sha256(manifest_path), file_sha256(summary_path))
+        if state == previous_state:
+            break
+        previous_state = state
+    return manifest, summary
 
 
 def build_run_summary(
