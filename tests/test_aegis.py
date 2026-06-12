@@ -254,10 +254,28 @@ class EvaluationTest(unittest.TestCase):
         self.assertGreaterEqual(metrics["source_context_coverage"], 0.75)
         self.assertGreaterEqual(metrics["prompt_context_coverage"], 0.75)
         self.assertGreaterEqual(metrics["complete_file_context_coverage"], 0.75)
+        self.assertGreaterEqual(metrics["prompt_context_expected_path_coverage"], 0.75)
+        self.assertGreaterEqual(metrics["complete_file_expected_path_coverage"], 0.75)
         first_case = evaluation["rag"][0]
         self.assertTrue(first_case["prompt_context_available"])
         self.assertTrue(first_case["complete_file_context_available"])
         self.assertIn("src/main_entrypoint.py", first_case["complete_file_paths"])
+
+    def test_route_eval_requires_all_expected_files_in_prompt_context(self) -> None:
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        evaluation = Evaluator(knowledge, index).run(builtin_suite("sample_repo"))
+        metrics = evaluation["metrics"]
+        self.assertEqual(metrics["prompt_context_expected_path_coverage"], 1.0)
+        self.assertEqual(metrics["complete_file_expected_path_coverage"], 1.0)
+        route_case = next(case for case in evaluation["rag"] if "/users" in case["question"])
+        self.assertTrue(route_case["prompt_context_available"])
+        self.assertTrue(route_case["complete_file_context_available"])
+        self.assertEqual(
+            set(route_case["complete_file_matched_paths"]),
+            {"app.py", "services/user_service.py", "repositories/user_repository.py"},
+        )
+        self.assertIn("repositories/user_repository.py", route_case["required_context_paths"])
 
     def test_custom_eval_suite_file_loads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -907,7 +925,9 @@ class CLITest(unittest.TestCase):
                 check for check in payload["readiness"]["checks"] if check["name"] == "evaluation"
             )
             self.assertEqual(evaluation_check["detail"]["prompt_context_coverage"], 1.0)
+            self.assertEqual(evaluation_check["detail"]["prompt_context_expected_path_coverage"], 1.0)
             self.assertEqual(evaluation_check["detail"]["complete_file_context_coverage"], 1.0)
+            self.assertEqual(evaluation_check["detail"]["complete_file_expected_path_coverage"], 1.0)
             self.assertEqual(payload["readiness"]["threshold"], 1.0)
             self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
             self.assertTrue(Path(payload["outputs"]["manifest"]).exists())

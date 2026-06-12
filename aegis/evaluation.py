@@ -3,12 +3,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.models import RepoKnowledge
 from aegis.rag.index import RAGIndex
 from aegis.rag.retriever import RAGRetriever
+
+
+ROUTE_RE = re.compile(r"(/[A-Za-z0-9_./{}<>\-:]+)")
 
 
 @dataclass
@@ -125,6 +129,9 @@ class Evaluator:
         source_hits = sum(1 for case in rag_cases if case["source_context_available"])
         prompt_hits = sum(1 for case in rag_cases if case["prompt_context_available"])
         complete_file_hits = sum(1 for case in rag_cases if case["complete_file_context_available"])
+        expected_path_total = sum(len(case["expected_paths"]) for case in rag_cases)
+        prompt_path_hits = sum(len(case["prompt_context_matched_paths"]) for case in rag_cases)
+        complete_file_path_hits = sum(len(case["complete_file_matched_paths"]) for case in rag_cases)
         return {
             "suite": suite.name,
             "repo": self.knowledge.repo_name,
@@ -141,9 +148,18 @@ class Evaluator:
                 "prompt_context_cases": rag_total,
                 "prompt_context_hits": prompt_hits,
                 "prompt_context_coverage": self._rate(prompt_hits, rag_total),
+                "prompt_context_expected_paths": expected_path_total,
+                "prompt_context_expected_path_hits": prompt_path_hits,
+                "prompt_context_expected_path_coverage": self._rate(prompt_path_hits, expected_path_total),
                 "complete_file_context_cases": rag_total,
                 "complete_file_context_hits": complete_file_hits,
                 "complete_file_context_coverage": self._rate(complete_file_hits, rag_total),
+                "complete_file_expected_paths": expected_path_total,
+                "complete_file_expected_path_hits": complete_file_path_hits,
+                "complete_file_expected_path_coverage": self._rate(
+                    complete_file_path_hits,
+                    expected_path_total,
+                ),
                 "overall_score": self._overall_score(
                     rag_hits,
                     rag_total,
@@ -152,6 +168,9 @@ class Evaluator:
                     source_hits,
                     prompt_hits,
                     complete_file_hits,
+                    prompt_path_hits,
+                    complete_file_path_hits,
+                    expected_path_total,
                 ),
             },
             "rag": rag_cases,
@@ -168,11 +187,26 @@ class Evaluator:
             result.chunk.kind == "source" or self.retriever.source_companion(result.chunk)
             for result in results
         )
-        context_pack = self.retriever.context_pack(case.question, top_k=case.top_k)
+        required_paths = self._required_paths_for_question(case.question, results)
+        context_pack = self.retriever.context_pack(
+            case.question,
+            top_k=case.top_k,
+            required_paths=required_paths,
+        )
         prompt_context_paths = context_pack.source_paths()
         complete_file_paths = context_pack.complete_file_paths()
-        prompt_context_available = bool(context_pack.blocks and prompt_context_paths)
-        complete_file_context_available = bool(expected.intersection(complete_file_paths))
+        prompt_context_matched_paths = sorted(expected.intersection(prompt_context_paths))
+        complete_file_matched_paths = sorted(expected.intersection(complete_file_paths))
+        prompt_context_available = (
+            bool(context_pack.blocks and prompt_context_paths)
+            if not expected
+            else len(prompt_context_matched_paths) == len(expected)
+        )
+        complete_file_context_available = (
+            bool(complete_file_paths)
+            if not expected
+            else len(complete_file_matched_paths) == len(expected)
+        )
         return {
             **asdict(case),
             "hit": bool(matched),
@@ -181,8 +215,11 @@ class Evaluator:
             "source_context_available": source_context_available,
             "prompt_context_available": prompt_context_available,
             "prompt_context_paths": prompt_context_paths,
+            "prompt_context_matched_paths": prompt_context_matched_paths,
             "complete_file_context_available": complete_file_context_available,
             "complete_file_paths": complete_file_paths,
+            "complete_file_matched_paths": complete_file_matched_paths,
+            "required_context_paths": required_paths,
             "top_results": [
                 {
                     "title": result.chunk.title,
@@ -194,6 +231,30 @@ class Evaluator:
                 for result in results[: min(case.top_k, 10)]
             ],
         }
+
+    def _required_paths_for_question(self, question: str, results: list[Any]) -> list[str]:
+        route = self._route_from_question(question) or self._route_from_results(results)
+        if not route:
+            return []
+        paths = [
+            node.path
+            for node in self.graph_query.trace_interface(route)
+            if node.path
+        ]
+        return list(dict.fromkeys(paths))
+
+    @staticmethod
+    def _route_from_question(question: str) -> str | None:
+        match = ROUTE_RE.search(question)
+        return match.group(1).rstrip("，。！？?,.;") if match else None
+
+    @staticmethod
+    def _route_from_results(results: list[Any]) -> str | None:
+        for result in results:
+            route = result.chunk.metadata.get("route")
+            if isinstance(route, str) and route.startswith("/"):
+                return route
+        return None
 
     def _eval_trace_case(self, case: TraceEvalCase) -> dict[str, Any]:
         trace = self.graph_query.trace_interface(case.route, max_depth=case.max_depth)
@@ -238,13 +299,18 @@ class Evaluator:
         source_hits: int,
         prompt_hits: int,
         complete_file_hits: int,
+        prompt_path_hits: int,
+        complete_file_path_hits: int,
+        expected_path_total: int,
     ) -> float:
         weights: list[tuple[float, float]] = []
         if rag_total:
-            weights.append((0.4, cls._rate(rag_hits, rag_total)))
-            weights.append((0.2, cls._rate(source_hits, rag_total)))
-            weights.append((0.2, cls._rate(prompt_hits, rag_total)))
-            weights.append((0.2, cls._rate(complete_file_hits, rag_total)))
+            weights.append((0.3, cls._rate(rag_hits, rag_total)))
+            weights.append((0.15, cls._rate(source_hits, rag_total)))
+            weights.append((0.15, cls._rate(prompt_hits, rag_total)))
+            weights.append((0.15, cls._rate(complete_file_hits, rag_total)))
+            weights.append((0.1, cls._rate(prompt_path_hits, expected_path_total)))
+            weights.append((0.15, cls._rate(complete_file_path_hits, expected_path_total)))
         if trace_total:
             weights.append((0.25, cls._rate(trace_hits, trace_total)))
         if not weights:
