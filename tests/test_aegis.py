@@ -459,6 +459,22 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("Complete file: yes", answer.llm_user_prompt)
         self.assertIn("class TimingModel", answer.llm_user_prompt)
 
+    def test_qa_agent_forces_context_files_into_prompt_context(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index).answer(
+            "Where is the entrypoint?",
+            top_k=1,
+            max_context_chars=12000,
+            context_files=["src/timing/timing_model.py"],
+        )
+        self.assertIn("src/timing/timing_model.py", answer.required_context_paths)
+        self.assertIn("src/timing/timing_model.py", answer.context_pack.target_context_paths)
+        self.assertIn("src/timing/timing_model.py", answer.context_pack.complete_file_paths())
+        self.assertEqual(answer.context_pack.missing_required_context_paths(), [])
+        self.assertEqual(answer.context_pack.incomplete_required_context_paths(), [])
+        self.assertIn("class TimingModel", answer.llm_user_prompt)
+
     def test_required_context_contract_reports_missing_files(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()
@@ -905,7 +921,9 @@ class PackagingTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('ask.add_argument("--context-chars", default="48000")', script)
+        self.assertIn('ask.add_argument("--context-file", action="append", default=[])', script)
         self.assertIn('ready.add_argument("--context-chars", default="48000")', script)
+        self.assertIn('ready.add_argument("--context-file", action="append", default=[])', script)
 
     def test_skill_wrapper_exposes_optional_llm_flag(self) -> None:
         script = (ROOT / "skills" / "aegis-repo-analyst" / "scripts" / "run_aegis.py").read_text(
@@ -1040,6 +1058,8 @@ class CLITest(unittest.TestCase):
                     "项目入口在哪里",
                     "--top-k",
                     "2",
+                    "--context-file",
+                    "src/timing/timing_model.py",
                     "--json",
                 ],
                 cwd=ROOT,
@@ -1058,6 +1078,11 @@ class CLITest(unittest.TestCase):
             self.assertIn("llm_prompt", payload["qa"])
             self.assertTrue(payload["qa"]["required_context_satisfied"])
             self.assertTrue(payload["qa"]["target_context_satisfied"])
+            self.assertIn("src/timing/timing_model.py", payload["qa"]["required_context_paths"])
+            self.assertIn(
+                "src/timing/timing_model.py",
+                payload["qa"]["context_pack"]["complete_file_paths"],
+            )
             self.assertEqual(payload["qa"]["missing_required_context_paths"], [])
             self.assertEqual(payload["qa"]["missing_target_context_paths"], [])
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
@@ -1069,10 +1094,12 @@ class CLITest(unittest.TestCase):
             self.assertIn("AEGIS RAG CONTEXT PACK", context_pack_artifact)
             self.assertIn("Target context satisfied: true", context_pack_artifact)
             self.assertIn("class StandaloneEntrypoint", context_pack_artifact)
+            self.assertIn("class TimingModel", context_pack_artifact)
             llm_prompt_artifact = Path(payload["outputs"]["llm_prompt"]).read_text(encoding="utf-8")
             self.assertIn("## User Prompt", llm_prompt_artifact)
             self.assertIn("Target context satisfied: true", llm_prompt_artifact)
             self.assertIn("class StandaloneEntrypoint", llm_prompt_artifact)
+            self.assertIn("class TimingModel", llm_prompt_artifact)
             manifest = json.loads(Path(payload["outputs"]["manifest"]).read_text(encoding="utf-8"))
             self.assertTrue(manifest["artifacts"]["qa_answer.json"]["exists"])
             self.assertTrue(manifest["artifacts"]["context_pack.md"]["exists"])

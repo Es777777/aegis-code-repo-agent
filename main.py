@@ -59,6 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ask", help="Ask the repository with the RAG agent")
     parser.add_argument("--top-k", type=int, default=8, help="Number of RAG retrieval results")
     parser.add_argument(
+        "--context-file",
+        action="append",
+        default=[],
+        help="Force a repository file into the RAG prompt context; repeatable",
+    )
+    parser.add_argument(
         "--context-chars",
         type=int,
         default=config.rag_context_chars,
@@ -462,6 +468,7 @@ def main() -> int:
             ask_question,
             top_k=args.top_k,
             max_context_chars=args.context_chars,
+            context_files=list(args.context_file or []),
         )
         payload["qa"] = qa_payload(qa, answer)
         write_qa_artifacts(result.output_dir, payload["qa"], answer)

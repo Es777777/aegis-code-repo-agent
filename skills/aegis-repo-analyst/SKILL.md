@@ -102,6 +102,16 @@ with `--context-chars` or narrow the question until
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 48000 --json
 ```
 
+When another agent or the user already knows a file must be read, force it into
+the prompt contract with `--context-file`. Repeat the option for multiple files.
+Forced files are required context and must appear in
+`qa.context_pack.complete_file_paths`; otherwise AEGIS marks the prompt unsafe
+and skips a configured LLM:
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
+```
+
 Each ask also writes `qa_answer.json`, `context_pack.md`, and `llm_prompt.md`
 in the output directory. Prefer these files when another agent needs to reuse
 the exact answer payload or replay the exact prompt-ready source context.
@@ -168,6 +178,7 @@ Use this before claiming the system is ready. The evaluation reports RAG recall,
 python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --json
 python skills\aegis-repo-analyst\scripts\run_aegis.py ready --from-output output\aegis\<repo-name> --fail-under 1.0 --json
 python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --ask "POST /users call chain" --json
+python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-under 1.0 --ask "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
 ```
 
 Use this before demos or submissions. It aggregates doctor checks, required

@@ -46,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("--include", action="append", default=[])
     ask.add_argument("--exclude", action="append", default=[])
     ask.add_argument("--top-k", default="8")
+    ask.add_argument("--context-file", action="append", default=[])
     ask.add_argument("--context-chars", default="48000")
     ask.add_argument("--llm", action="store_true")
     ask.add_argument("--no-cache", action="store_true")
@@ -106,6 +107,7 @@ def parse_args() -> argparse.Namespace:
     ready.add_argument("--fail-under", default="0.75")
     ready.add_argument("--ask")
     ready.add_argument("--top-k", default="8")
+    ready.add_argument("--context-file", action="append", default=[])
     ready.add_argument("--context-chars", default="48000")
     ready.add_argument("--no-cache", action="store_true")
     ready.add_argument("--llm", action="store_true")
@@ -168,6 +170,8 @@ def main() -> int:
             "--context-chars",
             str(args.context_chars),
         ]
+        for path in args.context_file:
+            command.extend(["--context-file", path])
         return run(command, cwd=root)
     if args.command == "trace":
         return run([*common, "--trace-interface", args.route], cwd=root)
@@ -198,6 +202,8 @@ def main() -> int:
                     str(args.context_chars),
                 ]
             )
+            for path in args.context_file:
+                command.extend(["--context-file", path])
         return run(command, cwd=root)
     raise SystemExit(f"Unknown command: {args.command}")
 

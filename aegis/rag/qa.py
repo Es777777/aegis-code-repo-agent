@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import re
 from typing import Any
 
@@ -48,10 +49,15 @@ class RepositoryQAAgent:
         *,
         top_k: int = 8,
         max_context_chars: int = 12000,
+        context_files: list[str] | None = None,
     ) -> QAAnswer:
         results = self.retriever.search(question, top_k=top_k)
         graph_context = self._graph_context(question, results)
-        required_paths = self._required_context_paths(question, graph_context)
+        required_paths = self._required_context_paths(
+            question,
+            graph_context,
+            forced_paths=context_files,
+        )
         context_pack = self.retriever.context_pack(
             question,
             top_k=top_k,
@@ -271,10 +277,12 @@ class RepositoryQAAgent:
         self,
         question: str,
         graph_context: dict[str, Any] | None,
+        forced_paths: list[str] | None = None,
     ) -> list[str]:
         return list(
             dict.fromkeys(
                 [
+                    *self._forced_source_paths(forced_paths or []),
                     *self._graph_source_paths(graph_context),
                     *self._explicit_source_paths(question),
                 ]
@@ -314,6 +322,26 @@ class RepositoryQAAgent:
             elif stem_counts.get(stem, 0) == 1 and stem in normalized_question:
                 paths.append(path)
         return list(dict.fromkeys(paths))
+
+    def _forced_source_paths(self, paths: list[str]) -> list[str]:
+        source_paths = set(self.retriever.source_chunks_by_path)
+        lower_to_path = {path.lower(): path for path in source_paths}
+        normalized_paths: list[str] = []
+        for raw_path in paths:
+            normalized = raw_path.replace("\\", "/").strip()
+            if not normalized:
+                continue
+            path_obj = Path(normalized)
+            if path_obj.is_absolute() and self.knowledge.root:
+                try:
+                    normalized = path_obj.relative_to(Path(self.knowledge.root)).as_posix()
+                except ValueError:
+                    normalized = path_obj.as_posix()
+            if normalized in source_paths:
+                normalized_paths.append(normalized)
+            else:
+                normalized_paths.append(lower_to_path.get(normalized.lower(), normalized))
+        return list(dict.fromkeys(normalized_paths))
 
     @staticmethod
     def _llm_system_prompt() -> str:

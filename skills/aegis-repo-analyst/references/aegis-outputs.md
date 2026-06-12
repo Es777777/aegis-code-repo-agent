@@ -56,13 +56,14 @@ python main.py <repo-path> --impact --impact-file services/user_service.py --jso
 python main.py <repo-path> --ready --ready-fail-under 1.0 --json
 python main.py <repo-path> --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
 python main.py <repo-path> --ask "Where is user creation implemented?"
+python main.py <repo-path> --ask "Where is the entrypoint?" --context-file src/timing/timing_model.py --json
 python main.py <repo-path> --ask "Explain /users" --llm
 ```
 
 Ask JSON fields:
 
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
-- `qa.required_context_paths`: CodeGraph trace paths and explicit file mentions forced into prompt context.
+- `qa.required_context_paths`: CodeGraph trace paths, explicit file mentions, and `--context-file` paths forced into prompt context.
 - `qa.target_context_paths`: retrieval-selected and required files that should be complete in prompt context.
 - `qa.missing_target_context_paths`: target files absent from prompt context because of budget or missing source.
 - `qa.incomplete_target_context_paths`: target files present only as partial source windows.

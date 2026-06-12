@@ -141,6 +141,12 @@ python main.py examples\eda_repo --eval --eval-fail-under 0.9
 python main.py examples\sample_repo --ask "解释 /users 的调用链路" --llm
 ```
 
+强制把指定文件放进 RAG/LLM 上下文：
+
+```powershell
+python main.py examples\eda_repo --ask "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
+```
+
 ## Environment Configuration
 
 AEGIS 启动时会自动读取当前目录 `.env`，也支持系统环境变量。优先级：
@@ -398,6 +404,7 @@ Examples:
 ```powershell
 python main.py examples\sample_repo --ask "Where is user creation implemented?" --json
 python main.py --from-output output\aegis\sample_repo --ask "Where is user creation implemented?" --context-chars 24000 --json
+python main.py examples\eda_repo --ask "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
 ```
 
 `--ask` also writes reusable artifacts next to the report:
@@ -425,6 +432,10 @@ AEGIS also treats that file as required context and attempts to pack it as a
 complete line-numbered source file. `llm_prompt.md` records the full prompt that
 would be sent to an OpenAI-compatible chat model, so demos and downstream agents
 can verify exactly which files entered the LLM context.
+When automatic retrieval is not enough, pass `--context-file <path>` one or more
+times with `--ask` or `--ready-ask`. Each specified file becomes required
+context and must appear in `complete_file_paths`; otherwise the prompt is marked
+unsafe and a configured LLM is skipped.
 When `missing_required_context_paths` or `incomplete_required_context_paths` is
 non-empty, `required_context_satisfied=false` and AEGIS skips the LLM call for
 that question. Separately, retrieval-selected files are listed in
@@ -480,6 +491,7 @@ and evaluation metrics into one machine-readable verdict.
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
+python main.py examples\eda_repo --ready --ready-fail-under 1.0 --ready-ask "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
 ```
 
 The command writes:

@@ -261,6 +261,11 @@ plain keyword score would not rank them high enough.
 The QA agent also treats explicit file mentions as required context. A question
 that names a real path, unique file name, or unique file stem forces that file
 into the context pack before ordinary retrieval candidates are considered.
+Operators can also pass `--context-file <path>` with `--ask` or `--ready-ask`.
+These files bypass ranking and become required context, which is useful when an
+external agent already knows the file that must be read. If a forced file cannot
+be packed as complete line-numbered source, the LLM path is disabled and the
+payload reports the missing or incomplete required path.
 If any required path is still missing because the context budget is too small,
 the QA agent skips the LLM call and returns an offline diagnostic that asks the
 caller to increase `--context-chars` or narrow the question.
@@ -338,6 +343,7 @@ CLI:
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py --from-output output\aegis\sample_repo --ready --ready-fail-under 1.0 --json
 python main.py examples\sample_repo --ready --ready-fail-under 1.0 --ready-ask "POST /users call chain" --json
+python main.py examples\eda_repo --ready --ready-fail-under 1.0 --ready-ask "Where is the entrypoint?" --context-file src\timing\timing_model.py --json
 ```
 
 Output:
@@ -349,7 +355,9 @@ Output:
 
 `--ready-ask` adds a QA smoke question to the readiness run. It verifies that
 `qa_answer.json`, `context_pack.md`, and `llm_prompt.md` were written and that
-the context pack has complete-file source context with required paths satisfied.
+the context pack has complete-file source context with required and target paths
+satisfied. Use `--context-file` with `--ready-ask` to force important files into
+that QA smoke gate.
 
 The command returns exit code `2` when readiness fails.
 
