@@ -57,6 +57,7 @@ output/aegis/<repo-name>/
   report.md
   report.html
   architecture.mmd
+  manifest.json
 ```
 
 Summarize the important output paths for the user.
@@ -141,6 +142,10 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py ready --from-output output
 Use this before demos or submissions. It aggregates doctor checks, required
 artifacts, knowledge/CodeGraph/RAG health, and evaluation score into
 `readiness.json`. Treat `readiness.passed=false` as not ready.
+
+AEGIS also writes `manifest.json` for each run. Use it to verify the AEGIS
+version, run configuration, repository identity, summary stats, and artifact
+inventory for a delivered analysis.
 
 ### Serve HTML Report
 

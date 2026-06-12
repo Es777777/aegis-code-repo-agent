@@ -17,6 +17,7 @@ Files:
 - `architecture.mmd`: Mermaid diagram.
 - `impact.json`: optional CodeGraph impact analysis output created by `--impact`.
 - `readiness.json`: optional readiness gate output created by `--ready`.
+- `manifest.json`: analysis run manifest with version, config, stats, and artifact inventory.
 
 CodeGraph node kinds:
 
@@ -68,3 +69,12 @@ Readiness JSON fields:
 - `threshold`: evaluation score threshold used by the gate.
 - `checks`: named checks with `ok`, `warning`, or `error` status.
 - `summary`: names grouped by status.
+
+Manifest JSON fields:
+
+- `schema_version`: manifest schema version.
+- `aegis_version`: installed AEGIS package version.
+- `repo`: analyzed repository name, root, and git state when available.
+- `run`: scan and LLM configuration used for the analysis.
+- `stats`: file, CodeGraph, RAG, and finding summaries.
+- `artifacts`: artifact paths, existence, and byte sizes.

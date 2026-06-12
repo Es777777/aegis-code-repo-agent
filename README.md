@@ -49,6 +49,7 @@ output/aegis/sample_repo/
   report.html
   architecture.mmd
   rag_index.json
+  manifest.json
 ```
 
 启动报告服务器：
@@ -436,3 +437,16 @@ Important JSON fields:
 
 `--ready` returns exit code `2` when any readiness check fails, which makes it
 suitable for CI and competition scripts.
+
+## Artifact Manifest
+
+Every analysis run writes `manifest.json` next to the reports and indexes. It
+records the AEGIS version, manifest schema version, analyzed repository, git
+state when available, run configuration, summary stats, and artifact inventory.
+
+```text
+output/aegis/<repo-name>/manifest.json
+```
+
+Use this file when another agent or evaluation harness needs to prove which
+analysis artifacts belong together and how they were produced.

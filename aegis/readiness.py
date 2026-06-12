@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import json
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ class ReadinessAssessor:
         "report.md",
         "report.html",
         "architecture.mmd",
+        "manifest.json",
     ]
 
     def __init__(
@@ -42,6 +44,7 @@ class ReadinessAssessor:
         checks = [
             self._doctor_check(),
             self._artifact_check(),
+            self._manifest_check(),
             self._knowledge_check(),
             self._codegraph_check(),
             self._rag_check(),
@@ -97,6 +100,45 @@ class ReadinessAssessor:
                 "output_dir": str(self.result.output_dir),
                 "required": self.REQUIRED_ARTIFACTS,
                 "missing": missing,
+            },
+        )
+
+    def _manifest_check(self) -> ReadinessCheck:
+        path = self.result.output_dir / "manifest.json"
+        if not path.exists():
+            return ReadinessCheck(
+                name="manifest",
+                status="error",
+                message="manifest.json is missing.",
+                detail={"path": str(path)},
+            )
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return ReadinessCheck(
+                name="manifest",
+                status="error",
+                message="manifest.json is not readable JSON.",
+                detail={"path": str(path), "error": str(exc)},
+            )
+        repo = manifest.get("repo", {})
+        ok = (
+            manifest.get("schema_version") == "1.0"
+            and repo.get("name") == self.result.knowledge.repo_name
+            and "artifacts" in manifest
+        )
+        return ReadinessCheck(
+            name="manifest",
+            status="ok" if ok else "error",
+            message=(
+                "Manifest describes this analysis run."
+                if ok
+                else "Manifest is missing required metadata or targets a different repository."
+            ),
+            detail={
+                "schema_version": manifest.get("schema_version"),
+                "repo": repo.get("name"),
+                "generated_at": manifest.get("generated_at"),
             },
         )
 

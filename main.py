@@ -12,6 +12,7 @@ from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
+from aegis.manifest import build_manifest
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import QAAnswer, RepositoryQAAgent
@@ -84,6 +85,7 @@ def output_paths(output_dir: Path) -> dict[str, str]:
         "evaluation": str(output_dir / "evaluation.json"),
         "impact": str(output_dir / "impact.json"),
         "readiness": str(output_dir / "readiness.json"),
+        "manifest": str(output_dir / "manifest.json"),
     }
 
 
@@ -190,6 +192,30 @@ def get_rag_index(result: Any, *, prefer_saved: bool) -> Any:
     if prefer_saved and rag_index_path.exists():
         return load_rag_index(rag_index_path)
     return RAGIndexBuilder(result.knowledge).build()
+
+
+def refresh_manifest(result: Any, args: argparse.Namespace) -> None:
+    manifest = build_manifest(
+        result,
+        max_files=args.max_files,
+        include=list(args.include or []),
+        exclude=list(args.exclude or []),
+        use_cache=not args.no_cache,
+        llm_enabled=bool(args.llm),
+        events_count=_events_count(result.output_dir),
+    )
+    write_json(result.output_dir / "manifest.json", manifest)
+
+
+def _events_count(output_dir: Path) -> int:
+    events_path = output_dir / "events.json"
+    if not events_path.exists():
+        return 0
+    try:
+        data = json.loads(events_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    return len(data) if isinstance(data, list) else 0
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -324,6 +350,8 @@ def main() -> int:
         ).run()
         write_json(result.output_dir / "readiness.json", readiness)
         payload["readiness"] = readiness
+    if args.ready or should_eval or should_impact:
+        refresh_manifest(result, args)
 
     if args.json:
         print_json(payload)

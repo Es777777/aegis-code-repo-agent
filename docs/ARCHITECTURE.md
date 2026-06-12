@@ -35,6 +35,7 @@
 - `report.html`：可浏览报告。
 - `architecture.mmd`：Mermaid 架构图。
 - `rag_index.json`：面向 Agent 问答的检索索引。
+- `manifest.json`：分析运行清单，记录版本、配置、仓库、统计和产物库存。
 
 ## 产物复用
 
@@ -277,3 +278,18 @@ Output:
 - `output/aegis/<repo-name>/readiness.json`
 
 The command returns exit code `2` when readiness fails.
+
+## Artifact Manifest
+
+`manifest.json` is written for each analysis run and refreshed after post-run
+commands such as evaluation, impact analysis, or readiness checks. It records:
+
+- `schema_version`
+- `aegis_version`
+- repository name/root/git state
+- run configuration
+- repository, CodeGraph, RAG, and finding statistics
+- artifact paths, existence, and sizes
+
+Readiness treats the manifest as a required artifact and verifies that it
+matches the current repository analysis.

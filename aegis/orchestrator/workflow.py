@@ -16,6 +16,7 @@ from aegis.agents.llm_agent import LLMRepositoryAnalyst
 from aegis.config import LLMConfig
 from aegis.knowledge.indexer import KnowledgeBuilder
 from aegis.llm import LLMClient
+from aegis.manifest import build_manifest
 from aegis.models import AnalysisResult, Finding
 from aegis.orchestrator.context import ContextRouter
 from aegis.rag.index import RAGIndexBuilder
@@ -93,7 +94,18 @@ class AegisWorkflow:
         ReportWriter(self.output_dir).write(knowledge, reviewed, self.events)
         self._event("report-written", str(self.output_dir / "report.md"))
         write_json(self.output_dir / "events.json", self.events)
-        return AnalysisResult(knowledge=knowledge, findings=reviewed, output_dir=self.output_dir)
+        result = AnalysisResult(knowledge=knowledge, findings=reviewed, output_dir=self.output_dir)
+        manifest = build_manifest(
+            result,
+            max_files=self.max_files,
+            include=self.include,
+            exclude=self.exclude,
+            use_cache=self.use_cache,
+            llm_enabled=self.llm_config.enabled,
+            events_count=len(self.events),
+        )
+        write_json(self.output_dir / "manifest.json", manifest)
+        return result
 
     def _event(self, kind: str, message: str) -> None:
         self.events.append(

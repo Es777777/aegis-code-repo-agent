@@ -99,10 +99,15 @@ class WorkflowTest(unittest.TestCase):
             self.assertTrue((first.output_dir / "report.html").exists())
             self.assertTrue((first.output_dir / "architecture.mmd").exists())
             self.assertTrue((first.output_dir / "rag_index.json").exists())
+            self.assertTrue((first.output_dir / "manifest.json").exists())
             self.assertGreater(second.knowledge.stats.get("cache_hits", 0), 0)
             data = json.loads((second.output_dir / "knowledge.json").read_text(encoding="utf-8"))
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
+            manifest = json.loads((second.output_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["schema_version"], "1.0")
+            self.assertEqual(manifest["repo"]["name"], "sample_repo")
+            self.assertTrue(manifest["artifacts"]["knowledge.json"]["exists"])
 
     def test_saved_artifacts_can_be_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -652,10 +657,11 @@ class CLITest(unittest.TestCase):
             check_names = {check["name"] for check in payload["readiness"]["checks"]}
             self.assertGreaterEqual(
                 check_names,
-                {"doctor", "artifacts", "knowledge", "codegraph", "rag", "evaluation"},
+                {"doctor", "artifacts", "manifest", "knowledge", "codegraph", "rag", "evaluation"},
             )
             self.assertEqual(payload["readiness"]["threshold"], 1.0)
             self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
+            self.assertTrue(Path(payload["outputs"]["manifest"]).exists())
 
     def test_skill_wrapper_ready_from_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
