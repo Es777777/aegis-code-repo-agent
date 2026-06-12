@@ -36,12 +36,13 @@ def extract_symbols(text: str, language: str) -> list[str]:
     return _dedupe(symbols)[:80]
 
 
-def extract_interfaces(text: str, language: str) -> list[str]:
+def extract_interfaces(text: str, language: str, path: str | None = None) -> list[str]:
     interfaces: list[str] = []
     interfaces.extend(_python_web_interfaces(text) if language == "Python" else [])
     interfaces.extend(_js_web_interfaces(text) if language in {"JavaScript", "TypeScript"} else [])
     interfaces.extend(_spring_interfaces(text) if language in {"Java", "Kotlin"} else [])
     interfaces.extend(_generic_route_interfaces(text))
+    interfaces.extend(_file_based_route_interfaces(text, language, path))
     return _dedupe(interfaces)[:80]
 
 
@@ -145,6 +146,16 @@ def _js_web_interfaces(text: str) -> list[str]:
 
     interfaces: list[str] = []
     for match in re.finditer(
+        r"\b([A-Za-z_]\w*)\.route\(\s*\{(?P<body>.*?)\}\s*\)",
+        text,
+        flags=re.I | re.S,
+    ):
+        body = match.group("body")
+        method = re.search(r"\bmethod\s*:\s*['\"`]([A-Za-z]+)['\"`]", body)
+        route = re.search(r"\b(?:url|path)\s*:\s*['\"`]([^'\"`]+)['\"`]", body)
+        if method and route:
+            interfaces.append(f"{method.group(1).upper()} {_join_route('', route.group(1))}")
+    for match in re.finditer(
         r"\b([A-Za-z_]\w*)\.(get|post|put|patch|delete)\(\s*['\"`]([^'\"`]+)",
         text,
         flags=re.I,
@@ -217,6 +228,50 @@ def _generic_route_interfaces(text: str) -> list[str]:
     return interfaces
 
 
+def _file_based_route_interfaces(text: str, language: str, path: str | None) -> list[str]:
+    if not path or language not in {"JavaScript", "TypeScript"}:
+        return []
+    route = _route_from_file_path(path)
+    if not route:
+        return []
+    methods = _file_route_methods(text)
+    if not methods:
+        methods = ["ROUTE"]
+    return [f"{method} {route}" for method in methods]
+
+
+def _route_from_file_path(path: str) -> str | None:
+    normalized = path.replace("\\", "/")
+    parts = normalized.split("/")
+    if len(parts) >= 4 and "app" in parts and "api" in parts:
+        api_idx = parts.index("api")
+        if parts[-1].split(".", 1)[0] == "route" and api_idx < len(parts) - 1:
+            return _join_route("/api", _file_route_tail(parts[api_idx + 1 : -1]))
+    if len(parts) >= 3 and "routes" in parts and parts[-1].startswith("+server."):
+        routes_idx = parts.index("routes")
+        return _join_route("", _file_route_tail(parts[routes_idx + 1 : -1]))
+    if len(parts) >= 3 and "pages" in parts and "api" in parts:
+        api_idx = parts.index("api")
+        tail = parts[api_idx + 1 :]
+        if tail:
+            tail[-1] = tail[-1].rsplit(".", 1)[0]
+            return _join_route("/api", _file_route_tail(tail))
+    return None
+
+
+def _file_route_methods(text: str) -> list[str]:
+    methods: list[str] = []
+    for method in ["GET", "POST", "PUT", "PATCH", "DELETE"]:
+        patterns = [
+            rf"\bexport\s+(?:async\s+)?function\s+{method}\b",
+            rf"\bexport\s+const\s+{method}\s*=",
+            rf"\bexport\s*\{{[^}}]*\b{method}\b[^}}]*\}}",
+        ]
+        if any(re.search(pattern, text) for pattern in patterns):
+            methods.append(method)
+    return methods
+
+
 def _join_route(prefix: str, route: str) -> str:
     prefix = prefix.strip()
     route = route.strip()
@@ -229,6 +284,21 @@ def _join_route(prefix: str, route: str) -> str:
     if not combined.startswith("/"):
         combined = f"/{combined}"
     return combined or "/"
+
+
+def _normalize_file_route_segment(segment: str) -> str:
+    if segment.startswith("[[...") and segment.endswith("]]"):
+        return f":{segment[5:-2]}*"
+    if segment.startswith("[...") and segment.endswith("]"):
+        return f":{segment[4:-1]}*"
+    if segment.startswith("[") and segment.endswith("]"):
+        return f":{segment[1:-1]}"
+    return segment
+
+
+def _file_route_tail(parts: list[str]) -> str:
+    cleaned = [_normalize_file_route_segment(part) for part in parts if part and part != "index"]
+    return "/".join(cleaned)
 
 
 def _regex_unique(pattern: str, text: str) -> list[str]:

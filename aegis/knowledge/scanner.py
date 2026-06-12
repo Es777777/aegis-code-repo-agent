@@ -65,7 +65,7 @@ class RepoScanner:
             lines = text.splitlines()
             imports = extract_imports(text, language)
             symbols = extract_symbols(text, language)
-            interfaces = extract_interfaces(text, language)
+            interfaces = extract_interfaces(text, language, path=relative)
             calls = extract_calls(text, language)
             evidence = self._file_evidence(relative, lines, symbols, interfaces)
             files.append(

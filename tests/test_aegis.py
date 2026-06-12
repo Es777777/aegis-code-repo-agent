@@ -163,6 +163,10 @@ class UserController {
         go_gin = 'router.GET("/health", healthHandler)'
         aspnet = '[HttpDelete("users/{id}")]'
         laravel = "Route::patch('/users/{id}', [UserController::class, 'update']);"
+        fastify = "fastify.route({ method: 'POST', url: '/api/users', handler: createUser })"
+        hono = "app.get('/health', (c) => c.json({ ok: true }))"
+        next_route = "export async function GET() { return Response.json([]) }"
+        sveltekit_route = "export const PATCH = async () => json({ ok: true })"
         self.assertIn("POST /api/users", extract_interfaces(fastapi, "Python"))
         self.assertIn("GET /api/users", extract_interfaces(express, "JavaScript"))
         self.assertIn("GET /users/:id", extract_interfaces(nest, "TypeScript"))
@@ -170,6 +174,16 @@ class UserController {
         self.assertIn("GET /health", extract_interfaces(go_gin, "Go"))
         self.assertIn("DELETE /users/{id}", extract_interfaces(aspnet, "C#"))
         self.assertIn("PATCH /users/{id}", extract_interfaces(laravel, "PHP"))
+        self.assertIn("POST /api/users", extract_interfaces(fastify, "JavaScript"))
+        self.assertIn("GET /health", extract_interfaces(hono, "TypeScript"))
+        self.assertIn(
+            "GET /api/users/:id",
+            extract_interfaces(next_route, "TypeScript", path="app/api/users/[id]/route.ts"),
+        )
+        self.assertIn(
+            "PATCH /api/orders/:orderId",
+            extract_interfaces(sveltekit_route, "TypeScript", path="src/routes/api/orders/[orderId]/+server.ts"),
+        )
 
     def test_codegraph_traces_express_prefixed_router_interface(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -196,6 +210,31 @@ class UserController {
         self.assertTrue(trace)
         self.assertEqual(trace[0].metadata["route"], "/api/users")
         self.assertEqual(trace[0].metadata["method"], "GET")
+
+    def test_codegraph_traces_file_based_route_handlers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            route_path = root / "app" / "api" / "users" / "[id]" / "route.ts"
+            route_path.parent.mkdir(parents=True)
+            route_path.write_text(
+                "\n".join(
+                    [
+                        "export async function GET(request: Request) {",
+                        "  return Response.json({ ok: true })",
+                        "}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            knowledge = KnowledgeBuilder(root, max_files=20, use_cache=False).build()
+
+        relative = "app/api/users/[id]/route.ts"
+        self.assertEqual(knowledge.interface_catalog[relative], ["GET /api/users/:id"])
+        trace = CodeGraphQuery(knowledge.code_graph).trace_interface("/api/users/:id")
+        self.assertTrue(trace)
+        self.assertEqual(trace[0].metadata["route"], "/api/users/:id")
+        self.assertEqual(trace[0].metadata["method"], "GET")
+        self.assertTrue(any(node.name == "GET" and node.kind == "function" for node in trace))
 
 
 class WorkflowTest(unittest.TestCase):
@@ -376,6 +415,10 @@ class RAGRecallTest(unittest.TestCase):
         self.assertEqual(pack.blocks[0].context_mode, "full_file")
         self.assertTrue(pack.blocks[0].complete_file)
         self.assertIn("src/main_entrypoint.py", pack.complete_file_paths())
+        self.assertIn("src/main_entrypoint.py", pack.target_context_paths)
+        self.assertEqual(pack.missing_target_context_paths(), [])
+        self.assertEqual(pack.incomplete_target_context_paths(), [])
+        self.assertTrue(pack.to_dict()["target_context_satisfied"])
         self.assertIn("Complete file: yes", pack.blocks[0].content)
         self.assertIn("class MainEntrypoint", pack.blocks[0].content)
         self.assertGreaterEqual(pack.blocks[0].start_line or 0, 1)
@@ -390,6 +433,9 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("app.py", complete_paths)
         self.assertIn("services/user_service.py", complete_paths)
         self.assertIn("repositories/user_repository.py", complete_paths)
+        self.assertIn("app.py", pack.target_context_paths)
+        self.assertEqual(pack.missing_target_context_paths(), [])
+        self.assertEqual(pack.incomplete_target_context_paths(), [])
         app_block = next(block for block in pack.blocks if block.path == "app.py")
         self.assertTrue(app_block.complete_file)
         self.assertEqual(app_block.context_mode, "full_file")
@@ -424,8 +470,11 @@ class RAGRecallTest(unittest.TestCase):
         )
         self.assertEqual(pack.required_context_paths, ["src/timing/timing_model.py"])
         self.assertEqual(pack.missing_required_context_paths(), ["src/timing/timing_model.py"])
+        self.assertIn("src/timing/timing_model.py", pack.missing_target_context_paths())
         self.assertFalse(pack.to_dict()["required_context_satisfied"])
+        self.assertFalse(pack.to_dict()["target_context_satisfied"])
         self.assertIn("Missing required context paths: src/timing/timing_model.py", pack.render())
+        self.assertIn("Missing target context paths: src/timing/timing_model.py", pack.render())
 
     def test_required_context_contract_reports_incomplete_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -442,9 +491,13 @@ class RAGRecallTest(unittest.TestCase):
             )
             self.assertEqual(pack.missing_required_context_paths(), [])
             self.assertEqual(pack.incomplete_required_context_paths(), ["large_module.py"])
+            self.assertEqual(pack.incomplete_target_context_paths(), ["large_module.py"])
             self.assertEqual(pack.unsatisfied_required_context_paths(), ["large_module.py"])
+            self.assertEqual(pack.unsatisfied_target_context_paths(), ["large_module.py"])
             self.assertFalse(pack.to_dict()["required_context_satisfied"])
+            self.assertFalse(pack.to_dict()["target_context_satisfied"])
             self.assertIn("Incomplete required context paths: large_module.py", pack.render())
+            self.assertIn("Incomplete target context paths: large_module.py", pack.render())
 
     def test_qa_agent_skips_llm_when_required_context_is_missing(self) -> None:
         class FailingLLM:
@@ -543,7 +596,9 @@ class RAGRecallTest(unittest.TestCase):
         self.assertFalse(answer.context_safe_for_llm)
         self.assertTrue(answer.context_pack.source_context_satisfied())
         self.assertFalse(answer.context_pack.complete_file_context_satisfied())
+        self.assertEqual(answer.context_pack.incomplete_target_context_paths(), ["large_module.py"])
         self.assertIn("no complete source file", answer.llm_skip_reason)
+        self.assertIn("retrieved target files are missing or incomplete", answer.llm_skip_reason)
         self.assertIn("LLM request skipped", answer.answer)
 
     def test_offline_qa_prints_source_context(self) -> None:
@@ -1002,7 +1057,9 @@ class CLITest(unittest.TestCase):
             self.assertIn("context_pack", payload["qa"])
             self.assertIn("llm_prompt", payload["qa"])
             self.assertTrue(payload["qa"]["required_context_satisfied"])
+            self.assertTrue(payload["qa"]["target_context_satisfied"])
             self.assertEqual(payload["qa"]["missing_required_context_paths"], [])
+            self.assertEqual(payload["qa"]["missing_target_context_paths"], [])
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
             self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
             self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())
@@ -1010,9 +1067,11 @@ class CLITest(unittest.TestCase):
             self.assertEqual(qa_artifact["question"], "项目入口在哪里")
             context_pack_artifact = Path(payload["outputs"]["context_pack"]).read_text(encoding="utf-8")
             self.assertIn("AEGIS RAG CONTEXT PACK", context_pack_artifact)
+            self.assertIn("Target context satisfied: true", context_pack_artifact)
             self.assertIn("class StandaloneEntrypoint", context_pack_artifact)
             llm_prompt_artifact = Path(payload["outputs"]["llm_prompt"]).read_text(encoding="utf-8")
             self.assertIn("## User Prompt", llm_prompt_artifact)
+            self.assertIn("Target context satisfied: true", llm_prompt_artifact)
             self.assertIn("class StandaloneEntrypoint", llm_prompt_artifact)
             manifest = json.loads(Path(payload["outputs"]["manifest"]).read_text(encoding="utf-8"))
             self.assertTrue(manifest["artifacts"]["qa_answer.json"]["exists"])
@@ -1487,6 +1546,7 @@ class CLITest(unittest.TestCase):
             qa_check = next(check for check in payload["readiness"]["checks"] if check["name"] == "qa")
             self.assertEqual(qa_check["status"], "ok")
             self.assertTrue(qa_check["detail"]["required_context_satisfied"])
+            self.assertTrue(qa_check["detail"]["target_context_satisfied"])
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
             self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
             self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())

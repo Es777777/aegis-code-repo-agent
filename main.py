@@ -190,10 +190,15 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "llm_skip_reason": answer.llm_skip_reason,
         "graph_context": answer.graph_context,
         "required_context_paths": answer.required_context_paths,
+        "target_context_paths": answer.context_pack.target_context_paths or [],
         "missing_required_context_paths": answer.context_pack.missing_required_context_paths(),
         "incomplete_required_context_paths": answer.context_pack.incomplete_required_context_paths(),
         "unsatisfied_required_context_paths": answer.context_pack.unsatisfied_required_context_paths(),
         "required_context_satisfied": not answer.context_pack.unsatisfied_required_context_paths(),
+        "missing_target_context_paths": answer.context_pack.missing_target_context_paths(),
+        "incomplete_target_context_paths": answer.context_pack.incomplete_target_context_paths(),
+        "unsatisfied_target_context_paths": answer.context_pack.unsatisfied_target_context_paths(),
+        "target_context_satisfied": not answer.context_pack.unsatisfied_target_context_paths(),
         "source_context_satisfied": answer.context_pack.source_context_satisfied(),
         "complete_file_context_satisfied": answer.context_pack.complete_file_context_satisfied(),
         "context_pack": answer.context_pack.to_dict(),
@@ -262,6 +267,7 @@ def render_llm_prompt_markdown(answer: QAAnswer) -> str:
             f"Context safe for LLM: {str(answer.context_safe_for_llm).lower()}",
             f"LLM skip reason: {answer.llm_skip_reason or 'none'}",
             f"Required context paths: {', '.join(answer.required_context_paths) or 'none'}",
+            f"Target context paths: {', '.join(answer.context_pack.target_context_paths or []) or 'none'}",
             "Missing required context paths: "
             f"{', '.join(answer.context_pack.missing_required_context_paths()) or 'none'}",
             "Incomplete required context paths: "
@@ -270,6 +276,14 @@ def render_llm_prompt_markdown(answer: QAAnswer) -> str:
             f"{', '.join(answer.context_pack.unsatisfied_required_context_paths()) or 'none'}",
             "Required context satisfied: "
             f"{str(not answer.context_pack.unsatisfied_required_context_paths()).lower()}",
+            "Missing target context paths: "
+            f"{', '.join(answer.context_pack.missing_target_context_paths()) or 'none'}",
+            "Incomplete target context paths: "
+            f"{', '.join(answer.context_pack.incomplete_target_context_paths()) or 'none'}",
+            "Unsatisfied target context paths: "
+            f"{', '.join(answer.context_pack.unsatisfied_target_context_paths()) or 'none'}",
+            "Target context satisfied: "
+            f"{str(not answer.context_pack.unsatisfied_target_context_paths()).lower()}",
             "Source context satisfied: "
             f"{str(answer.context_pack.source_context_satisfied()).lower()}",
             "Complete-file context satisfied: "

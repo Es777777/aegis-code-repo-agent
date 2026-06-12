@@ -36,6 +36,8 @@ CONFIG_NODE_NAMES = {
     "docker-compose.yaml",
 }
 
+HTTP_METHOD_NAMES = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
 
 class CodeGraphBuilder:
     """Builds a repository-level code graph from static scan records.
@@ -274,6 +276,8 @@ class CodeGraphBuilder:
 
     @staticmethod
     def _symbol_kind(symbol: str) -> str:
+        if symbol.upper() in HTTP_METHOD_NAMES:
+            return "function"
         if symbol[:1].isupper():
             return "class"
         return "function"

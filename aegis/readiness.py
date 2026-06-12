@@ -230,6 +230,11 @@ class ReadinessAssessor:
         missing_required = self.qa_payload.get("missing_required_context_paths", [])
         incomplete_required = self.qa_payload.get("incomplete_required_context_paths", [])
         unsatisfied_required = self.qa_payload.get("unsatisfied_required_context_paths", [])
+        target_context_paths = self.qa_payload.get("target_context_paths", [])
+        missing_target = self.qa_payload.get("missing_target_context_paths", [])
+        incomplete_target = self.qa_payload.get("incomplete_target_context_paths", [])
+        unsatisfied_target = self.qa_payload.get("unsatisfied_target_context_paths", [])
+        target_satisfied = bool(self.qa_payload.get("target_context_satisfied"))
         satisfied = bool(self.qa_payload.get("required_context_satisfied"))
         source_context_satisfied = bool(self.qa_payload.get("source_context_satisfied"))
         complete_file_context_satisfied = bool(self.qa_payload.get("complete_file_context_satisfied"))
@@ -240,12 +245,16 @@ class ReadinessAssessor:
             and bool(source_paths)
             and bool(complete_file_paths)
             and satisfied
+            and target_satisfied
             and source_context_satisfied
             and complete_file_context_satisfied
             and context_safe_for_llm
             and not missing_required
             and not incomplete_required
             and not unsatisfied_required
+            and not missing_target
+            and not incomplete_target
+            and not unsatisfied_target
         )
         return ReadinessCheck(
             name="qa",
@@ -261,14 +270,19 @@ class ReadinessAssessor:
                 "missing_artifacts": missing_artifacts,
                 "source_paths": source_paths,
                 "complete_file_paths": complete_file_paths,
+                "target_context_paths": target_context_paths,
                 "context_safe_for_llm": context_safe_for_llm,
                 "llm_skip_reason": self.qa_payload.get("llm_skip_reason"),
                 "required_context_satisfied": satisfied,
+                "target_context_satisfied": target_satisfied,
                 "source_context_satisfied": source_context_satisfied,
                 "complete_file_context_satisfied": complete_file_context_satisfied,
                 "missing_required_context_paths": missing_required,
                 "incomplete_required_context_paths": incomplete_required,
                 "unsatisfied_required_context_paths": unsatisfied_required,
+                "missing_target_context_paths": missing_target,
+                "incomplete_target_context_paths": incomplete_target,
+                "unsatisfied_target_context_paths": unsatisfied_target,
             },
         )
 

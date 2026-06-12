@@ -63,6 +63,11 @@ Ask JSON fields:
 
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
 - `qa.required_context_paths`: CodeGraph trace paths and explicit file mentions forced into prompt context.
+- `qa.target_context_paths`: retrieval-selected and required files that should be complete in prompt context.
+- `qa.missing_target_context_paths`: target files absent from prompt context because of budget or missing source.
+- `qa.incomplete_target_context_paths`: target files present only as partial source windows.
+- `qa.unsatisfied_target_context_paths`: target files absent from prompt context or present only partially.
+- `qa.target_context_satisfied`: whether every target file is present as complete line-numbered source.
 - `qa.missing_required_context_paths`: required paths absent from prompt context because of budget or missing source.
 - `qa.incomplete_required_context_paths`: required paths present only as partial source windows.
 - `qa.unsatisfied_required_context_paths`: required paths absent from prompt context or present only partially.
@@ -75,6 +80,7 @@ Ask JSON fields:
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
 - `qa.context_pack.complete_file_paths`: files included as complete line-numbered source.
 - `qa.context_pack.required_context_satisfied`: same contract at context-pack level.
+- `qa.context_pack.target_context_satisfied`: same target-file contract at context-pack level.
 - `qa.context_pack.source_context_satisfied`: same source-content contract at context-pack level.
 - `qa.context_pack.complete_file_context_satisfied`: same complete-file contract at context-pack level.
 - `qa.context_pack.blocks[*].content`: line-numbered source code for the LLM.

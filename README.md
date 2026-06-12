@@ -248,8 +248,10 @@ AEGIS 会从 `RepoKnowledge + CodeGraph + Evidence Store` 构建 `rag_index.json
 - 关键 CodeGraph 边 chunk
 
 接口识别覆盖常见轻量后端形态：FastAPI / Flask-style decorators、Express
-`app/router`、NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style
-`.GET/.POST`、ASP.NET `Http*` attribute 和 Laravel `Route::*`。
+`app/router`、Fastify route objects、Hono/Fastify-style method routes、
+NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style `.GET/.POST`、
+ASP.NET `Http*` attribute、Laravel `Route::*`，以及 Next.js/SvelteKit
+file-based route handlers。
 
 默认检索器是无外部依赖的 BM25/关键词检索，适合离线演示和比赛环境。它会对 `CamelCase`、`snake_case`、路径片段和中英文架构词做展开，例如“入口/布线/布局/硬宏/Vivado/RTL/DFX”等问题可以命中真实代码文件。
 
@@ -373,6 +375,11 @@ retrieval summaries. Each context block contains:
 - `path`, `start_line`, `end_line`
 - `blocks[*].content`: real line-numbered code, preferably a whole file; large files fall back to focused source windows
 - `blocks[*].complete_file`: `true` when the block contains the entire file
+- `target_context_paths`: files selected by retrieval or required by graph/path hints for LLM reasoning
+- `missing_target_context_paths`: target files that did not fit into the prompt context
+- `incomplete_target_context_paths`: target files present only as partial source windows
+- `unsatisfied_target_context_paths`: target files that are missing or incomplete
+- `target_context_satisfied`: `false` when any selected target file is not present as a complete file
 - `required_context_paths`: CodeGraph trace paths and explicit file mentions forced into context
 - `missing_required_context_paths`: required files that did not fit into the prompt context
 - `incomplete_required_context_paths`: required files present only as partial source windows
@@ -380,7 +387,7 @@ retrieval summaries. Each context block contains:
 - `required_context_satisfied`: `false` when required files are missing or incomplete
 - `source_context_satisfied`: `true` only when real source file content entered the prompt context
 - `complete_file_context_satisfied`: `true` only when at least one whole source file entered the prompt context
-- `context_safe_for_llm`: `true` only when the prompt has real source context, a complete file, and all required files
+- `context_safe_for_llm`: `true` only when the prompt has real source context, a complete file, and all required/target files
 - `llm_skip_reason`: why AEGIS refused to call the LLM when the prompt context is unsafe
 - `llm_prompt`: the exact system/user prompt assembled for the LLM
 - the original retrieved chunk id and matched terms
@@ -420,10 +427,12 @@ would be sent to an OpenAI-compatible chat model, so demos and downstream agents
 can verify exactly which files entered the LLM context.
 When `missing_required_context_paths` or `incomplete_required_context_paths` is
 non-empty, `required_context_satisfied=false` and AEGIS skips the LLM call for
-that question. This prevents a model from answering about files that were only
-retrieved by name or only partially packed into prompt context. Increase
-`--context-chars` or narrow the question until required files appear in
-`complete_file_paths`.
+that question. Separately, retrieval-selected files are listed in
+`target_context_paths`; if any target file is missing or only partially packed,
+`target_context_satisfied=false` and AEGIS also skips the LLM call. This prevents
+a model from answering about files that were only retrieved by name or only
+partially packed into prompt context. Increase `--context-chars` or narrow the
+question until target and required files appear in `complete_file_paths`.
 AEGIS also skips `--ask --llm` when retrieval produced only metadata chunks, or
 when the context budget allowed source windows but no complete file. In those
 cases `context_safe_for_llm=false` and `llm_skip_reason` explains what to fix.
@@ -489,7 +498,8 @@ Important JSON fields:
 
 Use `--ready-ask` when you want the gate to also prove the QA path. It writes
 `qa_answer.json`, `context_pack.md`, and `llm_prompt.md`, then adds a `qa`
-readiness check for complete-file prompt context and required-context safety.
+readiness check for complete-file prompt context plus required/target-context
+safety.
 
 `--ready` returns exit code `2` when any readiness check fails, which makes it
 suitable for CI and competition scripts.

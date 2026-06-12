@@ -94,6 +94,7 @@ class RAGContextPack:
     used_chars: int
     blocks: list[RAGContextBlock]
     required_context_paths: list[str] | None = None
+    target_context_paths: list[str] | None = None
     dropped_blocks: int = 0
 
     def render(self) -> str:
@@ -101,12 +102,19 @@ class RAGContextPack:
         missing_required_paths = self.missing_required_context_paths()
         incomplete_required_paths = self.incomplete_required_context_paths()
         unsatisfied_required_paths = self.unsatisfied_required_context_paths()
+        missing_target_paths = self.missing_target_context_paths()
+        incomplete_target_paths = self.incomplete_target_context_paths()
+        unsatisfied_target_paths = self.unsatisfied_target_context_paths()
         lines = [
             "AEGIS RAG CONTEXT PACK",
             f"Query: {self.query}",
             f"Budget: {self.used_chars}/{self.max_chars} chars",
             f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
             f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
+            f"Target context paths: {', '.join(self.target_context_paths or []) or 'none'}",
+            f"Missing target context paths: {', '.join(missing_target_paths) or 'none'}",
+            f"Incomplete target context paths: {', '.join(incomplete_target_paths) or 'none'}",
+            f"Target context satisfied: {str(not unsatisfied_target_paths).lower()}",
             f"Required context paths: {', '.join(self.required_context_paths or []) or 'none'}",
             f"Missing required context paths: {', '.join(missing_required_paths) or 'none'}",
             f"Incomplete required context paths: {', '.join(incomplete_required_paths) or 'none'}",
@@ -119,6 +127,14 @@ class RAGContextPack:
                 [
                     "Warning: required files are missing or incomplete in this context pack. "
                     "Do not answer claims that depend on those files; ask for a larger context budget.",
+                    "",
+                ]
+            )
+        if unsatisfied_target_paths:
+            lines.extend(
+                [
+                    "Warning: some retrieved target files are missing or incomplete in this context pack. "
+                    "Do not ask an LLM to synthesize from this pack until the target context is satisfied.",
                     "",
                 ]
             )
@@ -155,10 +171,15 @@ class RAGContextPack:
             "used_chars": self.used_chars,
             "dropped_blocks": self.dropped_blocks,
             "required_context_paths": self.required_context_paths or [],
+            "target_context_paths": self.target_context_paths or [],
             "missing_required_context_paths": self.missing_required_context_paths(),
             "incomplete_required_context_paths": self.incomplete_required_context_paths(),
             "unsatisfied_required_context_paths": self.unsatisfied_required_context_paths(),
             "required_context_satisfied": not self.unsatisfied_required_context_paths(),
+            "missing_target_context_paths": self.missing_target_context_paths(),
+            "incomplete_target_context_paths": self.incomplete_target_context_paths(),
+            "unsatisfied_target_context_paths": self.unsatisfied_target_context_paths(),
+            "target_context_satisfied": not self.unsatisfied_target_context_paths(),
             "source_context_satisfied": self.source_context_satisfied(),
             "complete_file_context_satisfied": self.complete_file_context_satisfied(),
             "source_paths": self.source_paths(),
@@ -207,6 +228,33 @@ class RAGContextPack:
                 [
                     *self.missing_required_context_paths(),
                     *self.incomplete_required_context_paths(),
+                ]
+            )
+        )
+
+    def missing_target_context_paths(self) -> list[str]:
+        source_paths = set(self.source_paths())
+        return [
+            path
+            for path in dict.fromkeys(self.target_context_paths or [])
+            if path not in source_paths
+        ]
+
+    def incomplete_target_context_paths(self) -> list[str]:
+        source_paths = set(self.source_paths())
+        complete_paths = set(self.complete_file_paths())
+        return [
+            path
+            for path in dict.fromkeys(self.target_context_paths or [])
+            if path in source_paths and path not in complete_paths
+        ]
+
+    def unsatisfied_target_context_paths(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                [
+                    *self.missing_target_context_paths(),
+                    *self.incomplete_target_context_paths(),
                 ]
             )
         )
@@ -281,8 +329,8 @@ class RAGRetriever:
         candidates = self.search(query, top_k=max(top_k * 4, top_k + 12))
         context_results = self.file_context(
             candidates,
-            max_paths=max(1, top_k),
-            max_chunks=max(top_k * 4, top_k + 6),
+            max_paths=max(1, top_k * 3),
+            max_chunks=max(top_k * 8, top_k + 12),
         )
         if required_paths:
             context_results = self._required_path_results(required_paths) + context_results
@@ -387,6 +435,7 @@ class RAGRetriever:
             used_chars=min(used_chars, max_chars),
             blocks=blocks,
             required_context_paths=list(dict.fromkeys(required_paths or [])),
+            target_context_paths=list(dict.fromkeys([*(required_paths or []), *path_order])),
             dropped_blocks=dropped,
         )
 

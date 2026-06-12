@@ -98,8 +98,10 @@ CodeGraph 是 AEGIS 的核心知识图谱。它把仓库中的文件、模块、
 - `impacted_by_files(paths)`：从 Git Diff 文件反查受影响节点。
 
 接口节点来自轻量静态解析器，覆盖 FastAPI / Flask-style decorators、
-Express `app/router`、NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style
-`.GET/.POST`、ASP.NET `Http*` attribute 和 Laravel `Route::*` 等常见形态。
+Express `app/router`、Fastify route objects、Hono/Fastify-style method routes、
+NestJS `@Controller`、Spring `@*Mapping`、Gin/chi-style `.GET/.POST`、
+ASP.NET `Http*` attribute、Laravel `Route::*`，以及 Next.js/SvelteKit
+file-based route handlers 等常见形态。
 
 CLI 示例：
 
@@ -232,6 +234,10 @@ Context pack fields:
 - `max_chars` and `used_chars`
 - `source_paths`, the real source files included in the prompt context
 - `complete_file_paths`, files included as complete source files
+- `target_context_paths`, files selected by retrieval or required by graph/path hints
+- `missing_target_context_paths`, target files that did not fit into context
+- `incomplete_target_context_paths`, target files present only as partial windows
+- `target_context_satisfied`, `false` unless every target file is complete in context
 - `blocks[*].path`
 - `blocks[*].start_line` / `end_line`
 - `blocks[*].content` with line-numbered source
@@ -258,6 +264,10 @@ into the context pack before ordinary retrieval candidates are considered.
 If any required path is still missing because the context budget is too small,
 the QA agent skips the LLM call and returns an offline diagnostic that asks the
 caller to increase `--context-chars` or narrow the question.
+The same rule applies to retrieval-selected target files: a file that was chosen
+for reasoning must appear in `complete_file_paths`, otherwise
+`target_context_satisfied=false` and the configured LLM is not called. In AEGIS,
+semantic RAG selects files; prompt RAG supplies real file contents.
 The QA agent also skips `--ask --llm` if retrieval produced only repository or
 symbol metadata, or if the budget allowed partial source windows but no complete
 file. This keeps LLM answers tied to actual file contents instead of summaries.

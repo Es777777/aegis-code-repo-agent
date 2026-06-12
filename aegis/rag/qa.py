@@ -337,6 +337,13 @@ class RepositoryQAAgent:
                 + ", ".join(unsatisfied_required)
                 + "."
             )
+        unsatisfied_target = context_pack.unsatisfied_target_context_paths()
+        if unsatisfied_target:
+            reasons.append(
+                "retrieved target files are missing or incomplete in the prompt context: "
+                + ", ".join(unsatisfied_target)
+                + "."
+            )
         if not context_pack.source_context_satisfied():
             reasons.append("no real source file content was packed into the prompt context.")
         if not context_pack.complete_file_context_satisfied():

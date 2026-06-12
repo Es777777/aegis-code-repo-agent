@@ -83,16 +83,20 @@ The answer is evidence-first. If no LLM is configured, it returns retrieved chun
 
 RAG answers also include a prompt-ready `context_pack`. Downstream agents should
 first inspect `qa.graph_context`, `qa.required_context_satisfied`, and
-`qa.context_pack.source_paths`, then read `qa.context_pack.blocks[*].content`
-because it contains real line-numbered source files or focused source windows,
-not just summaries. Prefer blocks where `complete_file=true`;
-`qa.context_pack.complete_file_paths` lists every whole file packed into the
-prompt context. For route questions and explicit file mentions, AEGIS uses
-required RAG context so downstream service/repository files are placed into the
-prompt when budget allows. If `qa.missing_required_context_paths` or
-`qa.incomplete_required_context_paths` is non-empty, do not ask an LLM to answer
-from that payload; increase the budget with `--context-chars` or narrow the
-question until `qa.required_context_satisfied=true`:
+`qa.context_pack.target_context_satisfied`, then read
+`qa.context_pack.blocks[*].content` because it contains real line-numbered
+source files or focused source windows, not just summaries. Prefer blocks where
+`complete_file=true`; `qa.context_pack.complete_file_paths` lists every whole
+file packed into the prompt context. For route questions and explicit file
+mentions, AEGIS uses required RAG context so downstream service/repository files
+are placed into the prompt when budget allows. Ordinary retrieval-selected files
+are listed in `qa.context_pack.target_context_paths` and must also appear in
+`qa.context_pack.complete_file_paths` before an LLM answer is safe. If
+`qa.missing_required_context_paths`, `qa.incomplete_required_context_paths`,
+`qa.missing_target_context_paths`, or `qa.incomplete_target_context_paths` is
+non-empty, do not ask an LLM to answer from that payload; increase the budget
+with `--context-chars` or narrow the question until
+`qa.required_context_satisfied=true` and `qa.target_context_satisfied=true`:
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 48000 --json
@@ -130,8 +134,10 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py trace /users --from-output
 
 This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file -> downstream imports/calls/data nodes.
 Interface extraction covers common FastAPI/Flask-style decorators, Express
-routers, NestJS controllers, Spring mappings, Gin/chi-style method routes,
-ASP.NET `Http*` attributes, and Laravel `Route::*` declarations.
+routers, Fastify route objects, Hono/Fastify-style method routes, NestJS
+controllers, Spring mappings, Gin/chi-style method routes, ASP.NET `Http*`
+attributes, Laravel `Route::*` declarations, and Next.js/SvelteKit file-based
+route handlers.
 
 ### Analyze Change Impact
 
@@ -167,7 +173,7 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py ready <repo-path> --fail-u
 Use this before demos or submissions. It aggregates doctor checks, required
 artifacts, knowledge/CodeGraph/RAG health, and evaluation score into
 `readiness.json`. Add `--ask` to also verify QA artifacts, prompt-ready
-complete-file context, and required-context safety. Treat
+complete-file context, and required/target-context safety. Treat
 `readiness.passed=false` as not ready.
 
 AEGIS also writes `manifest.json` for each run. Use it to verify the AEGIS
