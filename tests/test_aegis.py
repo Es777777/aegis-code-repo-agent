@@ -245,6 +245,41 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("Complete file: yes", answer.llm_user_prompt)
         self.assertIn("class TimingModel", answer.llm_user_prompt)
 
+    def test_required_context_contract_reports_missing_files(self) -> None:
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        pack = RAGRetriever(index).context_pack(
+            "please analyze src/timing/timing_model.py",
+            top_k=1,
+            max_chars=120,
+            required_paths=["src/timing/timing_model.py"],
+        )
+        self.assertEqual(pack.required_context_paths, ["src/timing/timing_model.py"])
+        self.assertEqual(pack.missing_required_context_paths(), ["src/timing/timing_model.py"])
+        self.assertFalse(pack.to_dict()["required_context_satisfied"])
+        self.assertIn("Missing required context paths: src/timing/timing_model.py", pack.render())
+
+    def test_qa_agent_skips_llm_when_required_context_is_missing(self) -> None:
+        class FailingLLM:
+            @property
+            def available(self) -> bool:
+                return True
+
+            def complete(self, *, system: str, user: str) -> str:
+                raise AssertionError("LLM must not be called without required context")
+
+        knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
+        index = RAGIndexBuilder(knowledge).build()
+        answer = RepositoryQAAgent(knowledge, index, llm=FailingLLM()).answer(
+            "please analyze src/timing/timing_model.py",
+            top_k=1,
+            max_context_chars=120,
+        )
+        self.assertFalse(answer.used_llm)
+        self.assertEqual(answer.context_pack.missing_required_context_paths(), ["src/timing/timing_model.py"])
+        self.assertIn("Required context missing", answer.answer)
+        self.assertIn("LLM request skipped", answer.answer)
+
     def test_offline_qa_prints_source_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
         index = RAGIndexBuilder(knowledge).build()
@@ -643,6 +678,8 @@ class CLITest(unittest.TestCase):
             self.assertFalse(payload["qa"]["used_llm"])
             self.assertIn("context_pack", payload["qa"])
             self.assertIn("llm_prompt", payload["qa"])
+            self.assertTrue(payload["qa"]["required_context_satisfied"])
+            self.assertEqual(payload["qa"]["missing_required_context_paths"], [])
             self.assertTrue(Path(payload["outputs"]["qa_answer"]).exists())
             self.assertTrue(Path(payload["outputs"]["context_pack"]).exists())
             self.assertTrue(Path(payload["outputs"]["llm_prompt"]).exists())

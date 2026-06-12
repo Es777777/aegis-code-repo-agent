@@ -369,6 +369,8 @@ retrieval summaries. Each context block contains:
 - `blocks[*].content`: real line-numbered code, preferably a whole file; large files fall back to focused source windows
 - `blocks[*].complete_file`: `true` when the block contains the entire file
 - `required_context_paths`: CodeGraph trace paths and explicit file mentions forced into context
+- `missing_required_context_paths`: required files that did not fit into the prompt context
+- `required_context_satisfied`: `false` when an answer must not rely on missing files
 - `llm_prompt`: the exact system/user prompt assembled for the LLM
 - the original retrieved chunk id and matched terms
 - a configurable character budget
@@ -405,6 +407,10 @@ AEGIS also treats that file as required context and attempts to pack it as a
 complete line-numbered source file. `llm_prompt.md` records the full prompt that
 would be sent to an OpenAI-compatible chat model, so demos and downstream agents
 can verify exactly which files entered the LLM context.
+When `missing_required_context_paths` is non-empty, AEGIS skips the LLM call for
+that question and tells the caller to increase `--context-chars` or narrow the
+question. This prevents a model from answering about files that were only
+retrieved by name but never actually placed into prompt context.
 
 ## Change Impact Analysis
 

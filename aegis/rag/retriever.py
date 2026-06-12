@@ -93,19 +93,32 @@ class RAGContextPack:
     max_chars: int
     used_chars: int
     blocks: list[RAGContextBlock]
+    required_context_paths: list[str] | None = None
     dropped_blocks: int = 0
 
     def render(self) -> str:
         source_paths = self.source_paths()
+        missing_required_paths = self.missing_required_context_paths()
         lines = [
             "AEGIS RAG CONTEXT PACK",
             f"Query: {self.query}",
             f"Budget: {self.used_chars}/{self.max_chars} chars",
             f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
             f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
+            f"Required context paths: {', '.join(self.required_context_paths or []) or 'none'}",
+            f"Missing required context paths: {', '.join(missing_required_paths) or 'none'}",
+            f"Required context satisfied: {str(not missing_required_paths).lower()}",
             "Instruction: answer only from the real source files and line ranges below; cite paths and lines.",
             "",
         ]
+        if missing_required_paths:
+            lines.extend(
+                [
+                    "Warning: required files are missing from this context pack. "
+                    "Do not answer claims that depend on missing files; ask for a larger context budget.",
+                    "",
+                ]
+            )
         for block in self.blocks:
             location = block.path or "repository"
             if block.start_line and block.end_line:
@@ -138,6 +151,9 @@ class RAGContextPack:
             "max_chars": self.max_chars,
             "used_chars": self.used_chars,
             "dropped_blocks": self.dropped_blocks,
+            "required_context_paths": self.required_context_paths or [],
+            "missing_required_context_paths": self.missing_required_context_paths(),
+            "required_context_satisfied": not self.missing_required_context_paths(),
             "source_paths": self.source_paths(),
             "complete_file_paths": self.complete_file_paths(),
             "blocks": [block.to_dict() for block in self.blocks],
@@ -160,6 +176,14 @@ class RAGContextPack:
                 if block.chunk_kind == "source" and block.path and block.complete_file
             )
         )
+
+    def missing_required_context_paths(self) -> list[str]:
+        source_paths = set(self.source_paths())
+        return [
+            path
+            for path in dict.fromkeys(self.required_context_paths or [])
+            if path not in source_paths
+        ]
 
 
 class RAGRetriever:
@@ -330,6 +354,7 @@ class RAGRetriever:
             max_chars=max_chars,
             used_chars=min(used_chars, max_chars),
             blocks=blocks,
+            required_context_paths=list(dict.fromkeys(required_paths or [])),
             dropped_blocks=dropped,
         )
 

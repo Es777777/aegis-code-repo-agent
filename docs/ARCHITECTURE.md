@@ -228,6 +228,9 @@ Context pack fields:
 - `blocks[*].context_mode`, usually `full_file` or `partial_file`
 - `blocks[*].complete_file`, `true` when the whole file is in context
 - `blocks[*].retrieved_from` to show which semantic chunk led to the source
+- `required_context_paths`, paths that must be represented in source context
+- `missing_required_context_paths`, required paths absent from source context
+- `required_context_satisfied`, `false` when the prompt is not safe for LLM use
 
 For route questions, `RepositoryQAAgent` also emits `qa.graph_context` from
 `CodeGraphQuery.trace_interface(route)`. Paths from that trace are passed to
@@ -238,6 +241,9 @@ plain keyword score would not rank them high enough.
 The QA agent also treats explicit file mentions as required context. A question
 that names a real path, unique file name, or unique file stem forces that file
 into the context pack before ordinary retrieval candidates are considered.
+If any required path is still missing because the context budget is too small,
+the QA agent skips the LLM call and returns an offline diagnostic that asks the
+caller to increase `--context-chars` or narrow the question.
 
 CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
 uses `AEGIS_RAG_CONTEXT_CHARS` and defaults to `48000` so agent prompts can

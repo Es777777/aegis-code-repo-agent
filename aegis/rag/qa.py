@@ -62,7 +62,8 @@ class RepositoryQAAgent:
             graph_context=graph_context,
             context_pack=context_pack,
         )
-        if self.llm and self.llm.available:
+        missing_required_paths = context_pack.missing_required_context_paths()
+        if self.llm and self.llm.available and not missing_required_paths:
             try:
                 return QAAnswer(
                     question=question,
@@ -76,7 +77,12 @@ class RepositoryQAAgent:
                     used_llm=True,
                 )
             except LLMError as exc:
-                fallback = self._offline_answer(question, results, graph_context)
+                fallback = self._offline_answer(
+                    question,
+                    results,
+                    graph_context,
+                    missing_required_paths=missing_required_paths,
+                )
                 fallback += f"\n\nLLM request failed; returned offline evidence answer instead: {exc}"
                 return QAAnswer(
                     question=question,
@@ -89,9 +95,36 @@ class RepositoryQAAgent:
                     graph_context=graph_context,
                     used_llm=False,
                 )
+        if self.llm and self.llm.available and missing_required_paths:
+            fallback = self._offline_answer(
+                question,
+                results,
+                graph_context,
+                missing_required_paths=missing_required_paths,
+            )
+            fallback += (
+                "\n\nLLM request skipped because required files were not included "
+                "in the prompt context. Increase --context-chars or narrow the question."
+            )
+            return QAAnswer(
+                question=question,
+                answer=fallback,
+                results=results,
+                context_pack=context_pack,
+                required_context_paths=required_paths,
+                llm_system_prompt=system,
+                llm_user_prompt=user,
+                graph_context=graph_context,
+                used_llm=False,
+            )
         return QAAnswer(
             question=question,
-            answer=self._offline_answer(question, results, graph_context),
+            answer=self._offline_answer(
+                question,
+                results,
+                graph_context,
+                missing_required_paths=missing_required_paths,
+            ),
             results=results,
             context_pack=context_pack,
             required_context_paths=required_paths,
@@ -106,8 +139,10 @@ class RepositoryQAAgent:
         question: str,
         results: list[RetrievalResult],
         graph_context: dict[str, Any] | None = None,
+        missing_required_paths: list[str] | None = None,
     ) -> str:
-        if not results:
+        missing_required_paths = missing_required_paths or []
+        if not results and not missing_required_paths:
             return (
                 "No repository evidence was retrieved. Try a more specific route, "
                 "class name, file name, or module name."
@@ -117,6 +152,15 @@ class RepositoryQAAgent:
             "",
             "Offline RAG retrieved the following evidence:",
         ]
+        if missing_required_paths:
+            lines.extend(
+                [
+                    "",
+                    "Required context missing:",
+                    *[f"   - {path}" for path in missing_required_paths],
+                    "Increase --context-chars or ask a narrower question before relying on an LLM answer.",
+                ]
+            )
         if graph_context and graph_context.get("nodes"):
             lines.extend(["", "CodeGraph trace:"])
             for idx, node in enumerate(graph_context["nodes"][:12], start=1):
