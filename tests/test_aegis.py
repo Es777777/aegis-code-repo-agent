@@ -574,6 +574,14 @@ class PackagingTest(unittest.TestCase):
         )
         self.assertIn('ask.add_argument("--context-chars", default="48000")', script)
 
+    def test_skill_wrapper_exposes_optional_llm_flag(self) -> None:
+        script = (ROOT / "skills" / "aegis-repo-analyst" / "scripts" / "run_aegis.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('analyze.add_argument("--llm", action="store_true")', script)
+        self.assertIn('ready.add_argument("--llm", action="store_true")', script)
+        self.assertIn('if getattr(args, "llm", False):', script)
+
 
 class DoctorTest(unittest.TestCase):
     def test_doctor_json_passes_for_valid_repo(self) -> None:
@@ -675,6 +683,8 @@ class CLITest(unittest.TestCase):
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["repo"], "eda_repo")
             self.assertIn("qa", payload)
+            self.assertTrue(payload["qa"]["required_context_satisfied"])
+            self.assertIn("llm_prompt", payload["qa"])
             self.assertFalse(payload["qa"]["used_llm"])
             self.assertIn("context_pack", payload["qa"])
             self.assertIn("llm_prompt", payload["qa"])

@@ -60,6 +60,7 @@ output/aegis/<repo-name>/
   manifest.json
   qa_answer.json
   context_pack.md
+  llm_prompt.md
 ```
 
 Summarize the important output paths for the user.
@@ -81,22 +82,24 @@ Use this when the user asks repository questions such as:
 The answer is evidence-first. If no LLM is configured, it returns retrieved chunks and file/line evidence. With `--llm`, AEGIS asks the configured text model to synthesize from the retrieved context.
 
 RAG answers also include a prompt-ready `context_pack`. Downstream agents should
-first inspect `qa.graph_context` and `qa.context_pack.source_paths`, then read
-`qa.context_pack.blocks[*].content` because it contains real line-numbered source
-files or focused source windows, not just summaries. Prefer blocks where
-`complete_file=true`; `qa.context_pack.complete_file_paths` lists every whole
-file packed into the prompt context. For route questions, AEGIS uses CodeGraph
-trace paths as required RAG context so downstream service/repository files are
-placed into the prompt when budget allows. Increase the budget with
-`--context-chars` when a question needs broader file context:
+first inspect `qa.graph_context`, `qa.required_context_satisfied`, and
+`qa.context_pack.source_paths`, then read `qa.context_pack.blocks[*].content`
+because it contains real line-numbered source files or focused source windows,
+not just summaries. Prefer blocks where `complete_file=true`;
+`qa.context_pack.complete_file_paths` lists every whole file packed into the
+prompt context. For route questions and explicit file mentions, AEGIS uses
+required RAG context so downstream service/repository files are placed into the
+prompt when budget allows. If `qa.missing_required_context_paths` is non-empty,
+do not ask an LLM to answer from that payload; increase the budget with
+`--context-chars` or narrow the question:
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 48000 --json
 ```
 
-Each ask also writes `qa_answer.json` and `context_pack.md` in the output
-directory. Prefer these files when another agent needs to reuse the exact answer
-payload or prompt-ready source context.
+Each ask also writes `qa_answer.json`, `context_pack.md`, and `llm_prompt.md`
+in the output directory. Prefer these files when another agent needs to reuse
+the exact answer payload or replay the exact prompt-ready source context.
 
 Use `--json` when another tool, evaluator, or UI needs a stable payload with retrieved chunks, evidence, matched terms, and source excerpts:
 
@@ -200,6 +203,8 @@ AEGIS_LLM_MAX_CONTEXT_CHARS=14000
 ```
 
 Do not confuse these with image-generation variables such as `MM_IMAGE_API_KEY`; AEGIS RAG Q&A uses text chat completions.
+The skill wrapper accepts `--llm` on commands that may perform analysis or ask
+questions, and passes it through to the main AEGIS CLI.
 
 ## Evidence Discipline
 
@@ -207,6 +212,7 @@ When answering the user:
 
 - Prefer claims backed by file paths and line numbers.
 - Mention whether the answer came from offline RAG or LLM synthesis.
+- Check `qa.required_context_satisfied`; if false, report the missing files and ask for a larger context budget.
 - If retrieval is weak, say what evidence is missing.
 - For route questions, include the CodeGraph trace when available.
 - For architecture questions, cite `report.md` sections and `knowledge.json`/`rag_index.json` when useful.

@@ -19,6 +19,7 @@ Files:
 - `readiness.json`: optional readiness gate output created by `--ready`.
 - `qa_answer.json`: optional ask payload created by `--ask`.
 - `context_pack.md`: optional prompt-ready source context created by `--ask`.
+- `llm_prompt.md`: optional exact system/user prompt created by `--ask`.
 - `manifest.json`: analysis run manifest with version, config, stats, and artifact inventory.
 
 CodeGraph node kinds:
@@ -60,8 +61,13 @@ python main.py <repo-path> --ask "Explain /users" --llm
 Ask JSON fields:
 
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
+- `qa.required_context_paths`: CodeGraph trace paths and explicit file mentions forced into prompt context.
+- `qa.missing_required_context_paths`: required paths absent from prompt context because of budget or missing source.
+- `qa.required_context_satisfied`: whether it is safe to rely on the prompt for required files.
+- `qa.llm_prompt`: exact system/user prompt assembled for an OpenAI-compatible chat model.
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
 - `qa.context_pack.complete_file_paths`: files included as complete line-numbered source.
+- `qa.context_pack.required_context_satisfied`: same contract at context-pack level.
 - `qa.context_pack.blocks[*].content`: line-numbered source code for the LLM.
 - `qa.context_pack.blocks[*].complete_file`: `true` when the block contains the whole file.
 - `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.

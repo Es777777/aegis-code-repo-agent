@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("--include", action="append", default=[])
     analyze.add_argument("--exclude", action="append", default=[])
     analyze.add_argument("--no-cache", action="store_true")
+    analyze.add_argument("--llm", action="store_true")
     analyze.add_argument("--eval", action="store_true")
     analyze.add_argument("--eval-suite")
     analyze.add_argument("--eval-fail-under")
@@ -62,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("--include", action="append", default=[])
     trace.add_argument("--exclude", action="append", default=[])
     trace.add_argument("--no-cache", action="store_true")
+    trace.add_argument("--llm", action="store_true")
     trace.add_argument("--eval", action="store_true")
     trace.add_argument("--eval-suite")
     trace.add_argument("--eval-fail-under")
@@ -77,6 +79,7 @@ def parse_args() -> argparse.Namespace:
     impact.add_argument("--include", action="append", default=[])
     impact.add_argument("--exclude", action="append", default=[])
     impact.add_argument("--no-cache", action="store_true")
+    impact.add_argument("--llm", action="store_true")
     impact.add_argument("--json", action="store_true")
 
     eval_cmd = sub.add_parser("eval")
@@ -89,6 +92,7 @@ def parse_args() -> argparse.Namespace:
     eval_cmd.add_argument("--suite")
     eval_cmd.add_argument("--fail-under")
     eval_cmd.add_argument("--no-cache", action="store_true")
+    eval_cmd.add_argument("--llm", action="store_true")
     eval_cmd.add_argument("--json", action="store_true")
 
     ready = sub.add_parser("ready")
@@ -101,6 +105,7 @@ def parse_args() -> argparse.Namespace:
     ready.add_argument("--suite")
     ready.add_argument("--fail-under", default="0.75")
     ready.add_argument("--no-cache", action="store_true")
+    ready.add_argument("--llm", action="store_true")
     ready.add_argument("--json", action="store_true")
 
     doctor = sub.add_parser("doctor")
@@ -137,6 +142,8 @@ def main() -> int:
         common.extend(["--exclude", pattern])
     if getattr(args, "no_cache", False):
         common.append("--no-cache")
+    if getattr(args, "llm", False):
+        common.append("--llm")
     if getattr(args, "eval", False):
         common.append("--eval")
     if getattr(args, "eval_suite", None):
@@ -158,8 +165,6 @@ def main() -> int:
             "--context-chars",
             str(args.context_chars),
         ]
-        if args.llm:
-            command.append("--llm")
         return run(command, cwd=root)
     if args.command == "trace":
         return run([*common, "--trace-interface", args.route], cwd=root)
