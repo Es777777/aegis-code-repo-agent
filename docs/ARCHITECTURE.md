@@ -112,7 +112,10 @@ CLI 示例：
 
 ```powershell
 python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？"
+python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？" --json
 ```
+
+`--json` 会输出稳定的机器可读 payload，包含分析摘要、输出文件路径、RAG answer、检索结果、匹配词、证据和源码节选。接口追踪也支持 `python main.py <repo> --trace-interface /users --json`。
 
 ## LLM 接入
 

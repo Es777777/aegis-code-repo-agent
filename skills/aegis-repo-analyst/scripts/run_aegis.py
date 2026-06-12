@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("--max-files", default="1500")
     analyze.add_argument("--out", default="output/aegis")
     analyze.add_argument("--no-cache", action="store_true")
+    analyze.add_argument("--json", action="store_true")
 
     ask = sub.add_parser("ask")
     ask.add_argument("repo")
@@ -38,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     ask.add_argument("--top-k", default="8")
     ask.add_argument("--llm", action="store_true")
     ask.add_argument("--no-cache", action="store_true")
+    ask.add_argument("--json", action="store_true")
 
     trace = sub.add_parser("trace")
     trace.add_argument("repo")
@@ -45,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     trace.add_argument("--max-files", default="1500")
     trace.add_argument("--out", default="output/aegis")
     trace.add_argument("--no-cache", action="store_true")
+    trace.add_argument("--json", action="store_true")
 
     return parser.parse_args()
 
@@ -55,6 +58,8 @@ def main() -> int:
     common = [args.repo, "--max-files", str(args.max_files), "--out", args.out]
     if getattr(args, "no_cache", False):
         common.append("--no-cache")
+    if getattr(args, "json", False):
+        common.append("--json")
 
     if args.command == "analyze":
         return run(common, cwd=root)

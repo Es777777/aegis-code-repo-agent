@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 import os
@@ -149,6 +151,74 @@ class EnvConfigTest(unittest.TestCase):
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
+
+
+class CLITest(unittest.TestCase):
+    def test_ask_json_output_is_machine_readable_with_source_excerpt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/eda_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--ask",
+                    "项目入口在哪里",
+                    "--top-k",
+                    "2",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["repo"], "eda_repo")
+            self.assertIn("qa", payload)
+            self.assertFalse(payload["qa"]["used_llm"])
+            excerpts = "\n".join(
+                line
+                for result in payload["qa"]["results"]
+                for line in result["source_excerpt"]
+            )
+            self.assertIn("class StandaloneEntrypoint", excerpts)
+
+    def test_trace_json_output_is_machine_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--trace-interface",
+                    "/users",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertIn("trace", payload)
+            names = [node["name"] for node in payload["trace"]["nodes"]]
+            self.assertTrue(any("/users" in name for name in names))
 
 
 if __name__ == "__main__":

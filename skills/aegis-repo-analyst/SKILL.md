@@ -69,10 +69,17 @@ Use this when the user asks repository questions such as:
 
 The answer is evidence-first. If no LLM is configured, it returns retrieved chunks and file/line evidence. With `--llm`, AEGIS asks the configured text model to synthesize from the retrieved context.
 
+Use `--json` when another tool, evaluator, or UI needs a stable payload with retrieved chunks, evidence, matched terms, and source excerpts:
+
+```powershell
+python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --json
+```
+
 ### Trace An Interface
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py trace <repo-path> /users
+python skills\aegis-repo-analyst\scripts\run_aegis.py trace <repo-path> /users --json
 ```
 
 This uses CodeGraph `trace_interface(route)` to follow route -> handler -> file -> downstream imports/calls/data nodes.

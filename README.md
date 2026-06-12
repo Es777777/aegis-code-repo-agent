@@ -87,6 +87,13 @@ python main.py examples\sample_repo --trace-interface /users
 python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？"
 ```
 
+机器可读输出，适合评测脚本、前端或其他 Agent 调用：
+
+```powershell
+python main.py examples\sample_repo --ask "用户创建接口在哪里，数据写入哪里？" --json
+python main.py examples\sample_repo --trace-interface /users --json
+```
+
 启用 LLM 后基于检索上下文综合回答：
 
 ```powershell
