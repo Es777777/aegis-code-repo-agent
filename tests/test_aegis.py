@@ -133,6 +133,12 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn("Include 范围", report)
             self.assertIn("Exclude 范围", report)
             self.assertIn("跳过文件", report)
+            html_report = (result.output_dir / "report.html").read_text(encoding="utf-8")
+            self.assertIn('id="report-search"', html_report)
+            self.assertIn('href="knowledge.json"', html_report)
+            self.assertIn('href="rag_index.json"', html_report)
+            self.assertIn('href="manifest.json"', html_report)
+            self.assertIn("function applyFilter()", html_report)
 
 
 class RAGRecallTest(unittest.TestCase):
@@ -164,14 +170,17 @@ class RAGRecallTest(unittest.TestCase):
         retriever = RAGRetriever(index)
         context = retriever.context("项目入口在哪里", top_k=4, max_chars=6000)
         self.assertIn("kind=source", context)
+        self.assertIn("Files in context:", context)
         self.assertIn("Code:", context)
         self.assertIn("class MainEntrypoint", context)
         pack = retriever.context_pack("项目入口在哪里", top_k=4, max_chars=6000)
         self.assertGreater(len(pack.blocks), 0)
+        self.assertIn("src/main_entrypoint.py", pack.source_paths())
         self.assertEqual(pack.blocks[0].chunk_kind, "source")
         self.assertEqual(pack.blocks[0].path, "src/main_entrypoint.py")
         self.assertIn("class MainEntrypoint", pack.blocks[0].content)
         self.assertGreaterEqual(pack.blocks[0].start_line or 0, 1)
+        self.assertEqual(pack.to_dict()["source_paths"][0], "src/main_entrypoint.py")
 
     def test_offline_qa_prints_source_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()

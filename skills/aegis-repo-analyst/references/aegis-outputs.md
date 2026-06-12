@@ -55,6 +55,12 @@ python main.py <repo-path> --ask "Where is user creation implemented?"
 python main.py <repo-path> --ask "Explain /users" --llm
 ```
 
+Ask JSON fields:
+
+- `qa.context_pack.source_paths`: real source files included in the prompt context.
+- `qa.context_pack.blocks[*].content`: line-numbered source code blocks for the LLM.
+- `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.
+
 Impact JSON fields:
 
 - `source`: `explicit` or `git_diff`.

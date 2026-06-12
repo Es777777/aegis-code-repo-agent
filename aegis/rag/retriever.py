@@ -50,6 +50,7 @@ class RetrievalResult:
     chunk: RAGChunk
     score: float
     matched_terms: list[str]
+    retrieved_from: str | None = None
 
 
 @dataclass
@@ -91,11 +92,13 @@ class RAGContextPack:
     dropped_blocks: int = 0
 
     def render(self) -> str:
+        source_paths = self.source_paths()
         lines = [
             "AEGIS RAG CONTEXT PACK",
             f"Query: {self.query}",
             f"Budget: {self.used_chars}/{self.max_chars} chars",
-            "Instruction: answer only from the files and line ranges below; cite paths and lines.",
+            f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
+            "Instruction: answer only from the real source files and line ranges below; cite paths and lines.",
             "",
         ]
         for block in self.blocks:
@@ -126,8 +129,18 @@ class RAGContextPack:
             "max_chars": self.max_chars,
             "used_chars": self.used_chars,
             "dropped_blocks": self.dropped_blocks,
+            "source_paths": self.source_paths(),
             "blocks": [block.to_dict() for block in self.blocks],
         }
+
+    def source_paths(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                block.path
+                for block in self.blocks
+                if block.chunk_kind == "source" and block.path
+            )
+        )
 
 
 class RAGRetriever:
@@ -138,12 +151,17 @@ class RAGRetriever:
         self.avgdl = sum(len(doc) for doc in self.documents) / max(len(self.documents), 1)
         self.chunks_by_id = {chunk.id: chunk for chunk in index.chunks}
         self.chunks_by_path: dict[str, list[RAGChunk]] = {}
+        self.source_chunks_by_path: dict[str, list[RAGChunk]] = {}
         self.chunks_by_node: dict[str, list[RAGChunk]] = {}
         for chunk in index.chunks:
             if chunk.path:
                 self.chunks_by_path.setdefault(chunk.path, []).append(chunk)
+                if chunk.kind == "source":
+                    self.source_chunks_by_path.setdefault(chunk.path, []).append(chunk)
             for node_id in chunk.node_ids:
                 self.chunks_by_node.setdefault(node_id, []).append(chunk)
+        for chunks in self.source_chunks_by_path.values():
+            chunks.sort(key=lambda item: self._line_value(item.metadata.get("start_line"), item.line) or 0)
 
     def search(
         self,
@@ -184,8 +202,12 @@ class RAGRetriever:
         top_k: int = 8,
         max_chars: int = 12000,
     ) -> RAGContextPack:
-        candidates = self.search(query, top_k=max(top_k * 3, top_k + 8))
-        context_results = self.with_source_context(candidates, max_results=top_k + min(top_k, 4))
+        candidates = self.search(query, top_k=max(top_k * 4, top_k + 12))
+        context_results = self.file_context(
+            candidates,
+            max_paths=max(1, top_k),
+            max_chunks=max(top_k * 4, top_k + 6),
+        )
         blocks: list[RAGContextBlock] = []
         seen: set[str] = set()
         used_chars = 0
@@ -197,7 +219,7 @@ class RAGRetriever:
             seen.add(block_chunk.id)
             start_line = self._line_value(block_chunk.metadata.get("start_line"), block_chunk.line)
             end_line = self._line_value(block_chunk.metadata.get("end_line"), start_line)
-            header_chars = 220
+            header_chars = 260
             remaining = max_chars - used_chars - header_chars
             if remaining < 200:
                 dropped += 1
@@ -205,7 +227,7 @@ class RAGRetriever:
             content = block_chunk.text
             if len(content) > remaining:
                 content = content[: max(0, remaining - 40)].rstrip() + "\n...[truncated by context budget]"
-            retrieved_from = (
+            retrieved_from = result.retrieved_from or (
                 result.chunk.id
                 if result.chunk.id == block_chunk.id
                 else f"{result.chunk.id} -> {block_chunk.id}"
@@ -248,6 +270,78 @@ class RAGRetriever:
         except (TypeError, ValueError):
             return fallback
 
+    def file_context(
+        self,
+        results: list[RetrievalResult],
+        *,
+        max_paths: int,
+        max_chunks: int,
+    ) -> list[RetrievalResult]:
+        expanded: list[RetrievalResult] = []
+        seen_chunks: set[str] = set()
+        seen_paths: set[str] = set()
+        for result in results:
+            focus = result.chunk if result.chunk.kind == "source" else self.source_companion(result.chunk)
+            if focus and focus.path:
+                if focus.path not in seen_paths and len(seen_paths) >= max_paths:
+                    continue
+                seen_paths.add(focus.path)
+                for source, factor in self._source_window(focus):
+                    if source.id in seen_chunks:
+                        continue
+                    expanded.append(
+                        RetrievalResult(
+                            chunk=source,
+                            score=max(result.score * factor, 0.2),
+                            matched_terms=result.matched_terms,
+                            retrieved_from=(
+                                result.retrieved_from
+                                or (
+                                    result.chunk.id
+                                    if result.chunk.id == source.id
+                                    else f"{result.chunk.id} -> {source.id}"
+                                )
+                            ),
+                        )
+                    )
+                    seen_chunks.add(source.id)
+                    if len(expanded) >= max_chunks:
+                        return expanded
+                continue
+            if result.chunk.id not in seen_chunks:
+                expanded.append(result)
+                seen_chunks.add(result.chunk.id)
+                if len(expanded) >= max_chunks:
+                    return expanded
+        return expanded
+
+    def _source_window(self, focus: RAGChunk) -> list[tuple[RAGChunk, float]]:
+        if not focus.path:
+            return [(focus, 1.0)]
+        source_chunks = self.source_chunks_by_path.get(focus.path, [])
+        if not source_chunks:
+            return [(focus, 1.0)]
+        try:
+            focus_index = next(idx for idx, item in enumerate(source_chunks) if item.id == focus.id)
+        except StopIteration:
+            focus_index = 0
+        ordered: list[tuple[int, float]] = [(focus_index, 1.0)]
+        if len(source_chunks) <= 3:
+            ordered.extend((idx, 0.82) for idx in range(len(source_chunks)) if idx != focus_index)
+        else:
+            for offset, factor in [(-1, 0.78), (1, 0.78), (-2, 0.62), (2, 0.62)]:
+                idx = focus_index + offset
+                if 0 <= idx < len(source_chunks):
+                    ordered.append((idx, factor))
+        seen: set[int] = set()
+        window: list[tuple[RAGChunk, float]] = []
+        for idx, factor in ordered:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            window.append((source_chunks[idx], factor))
+        return window
+
     def with_source_context(
         self,
         results: list[RetrievalResult],
@@ -270,6 +364,7 @@ class RAGRetriever:
                         chunk=companion,
                         score=max(result.score * 0.92, 0.2),
                         matched_terms=result.matched_terms,
+                        retrieved_from=f"{result.chunk.id} -> {companion.id}",
                     )
                 )
                 seen.add(companion.id)
@@ -282,9 +377,7 @@ class RAGRetriever:
     def source_companion(self, chunk: RAGChunk) -> RAGChunk | None:
         if chunk.kind == "source" or not chunk.path:
             return None
-        source_chunks = [
-            item for item in self.chunks_by_path.get(chunk.path, []) if item.kind == "source"
-        ]
+        source_chunks = self.source_chunks_by_path.get(chunk.path, [])
         if not source_chunks:
             return None
         if chunk.line:
@@ -374,7 +467,7 @@ class RAGRetriever:
             chunk = result.chunk
             neighbors: list[RAGChunk] = []
             if chunk.path:
-                source_chunks = [item for item in self.chunks_by_path.get(chunk.path, []) if item.kind == "source"]
+                source_chunks = self.source_chunks_by_path.get(chunk.path, [])
                 neighbors.extend(source_chunks[:3])
                 file_chunks = [item for item in self.chunks_by_path.get(chunk.path, []) if item.kind == "file"]
                 neighbors.extend(file_chunks[:1])
@@ -385,7 +478,12 @@ class RAGRetriever:
                     continue
                 bonus_score = max(result.score * 0.62, 0.2)
                 matched = sorted(set(query_tokens).intersection(self._tokens(neighbor.title + "\n" + neighbor.text)))
-                added = RetrievalResult(chunk=neighbor, score=bonus_score, matched_terms=matched)
+                added = RetrievalResult(
+                    chunk=neighbor,
+                    score=bonus_score,
+                    matched_terms=matched,
+                    retrieved_from=f"{result.chunk.id} -> {neighbor.id}",
+                )
                 by_id[neighbor.id] = added
                 expanded.append(added)
         return sorted(expanded, key=lambda item: item.score, reverse=True)

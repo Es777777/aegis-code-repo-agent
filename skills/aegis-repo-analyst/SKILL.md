@@ -79,9 +79,10 @@ Use this when the user asks repository questions such as:
 The answer is evidence-first. If no LLM is configured, it returns retrieved chunks and file/line evidence. With `--llm`, AEGIS asks the configured text model to synthesize from the retrieved context.
 
 RAG answers also include a prompt-ready `context_pack`. Downstream agents should
-read `qa.context_pack.blocks[*].content` because it contains real line-numbered
-source file chunks, not just summaries. Increase the budget with
-`--context-chars` when a question needs broader file context:
+first inspect `qa.context_pack.source_paths`, then read
+`qa.context_pack.blocks[*].content` because it contains real line-numbered source
+file chunks, not just summaries. Increase the budget with `--context-chars` when
+a question needs broader file context:
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 24000 --json

@@ -46,8 +46,10 @@ class RepositoryQAAgent:
         if self.llm and self.llm.available:
             system = (
                 "You are the AEGIS repository QA agent. Answer only from the provided "
-                "context pack. If the evidence is insufficient, say so. Cite file "
-                "paths and line ranges."
+                "context pack. The context pack contains real source file blocks with "
+                "line numbers; treat symbolic summaries as secondary hints only. If "
+                "the source evidence is insufficient, say so. Cite file paths and "
+                "line ranges."
             )
             user = f"Question: {question}\n\n{context_pack.render()}"
             try:

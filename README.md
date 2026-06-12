@@ -354,8 +354,9 @@ MIT License. See [LICENSE](LICENSE).
 `--ask` now builds a prompt-ready `context_pack` instead of only returning short
 retrieval summaries. Each context block contains:
 
+- `source_paths`: the real files included in the prompt context
 - `path`, `start_line`, `end_line`
-- the full retrieved source chunk content with line numbers
+- the full retrieved source chunk content with line numbers and nearby same-file chunks when budget allows
 - the original retrieved chunk id and matched terms
 - a configurable character budget
 
@@ -372,10 +373,10 @@ Configure the default budget with:
 AEGIS_RAG_CONTEXT_CHARS=16000
 ```
 
-Downstream agents should consume `qa.context_pack.blocks[*].content` directly
-when constructing LLM prompts. The LLM QA path already uses this same context
-pack, so the model receives real repository file content rather than file names
-or symbolic summaries alone.
+Downstream agents should inspect `qa.context_pack.source_paths` and consume
+`qa.context_pack.blocks[*].content` directly when constructing LLM prompts. The
+LLM QA path already uses this same context pack, so the model receives real
+repository file content rather than file names or symbolic summaries alone.
 
 ## Change Impact Analysis
 
