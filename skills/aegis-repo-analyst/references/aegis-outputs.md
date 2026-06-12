@@ -66,6 +66,20 @@ Ask JSON fields:
 - `qa.context_pack.blocks[*].complete_file`: `true` when the block contains the whole file.
 - `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.
 
+Evaluation JSON fields:
+
+- `evaluation.metrics.rag_recall`: retrieval hit rate for expected files.
+- `evaluation.metrics.trace_success_rate`: CodeGraph route trace success rate.
+- `evaluation.metrics.source_context_coverage`: whether retrieved results have source companions.
+- `evaluation.metrics.prompt_context_coverage`: whether prompt-ready source context was built.
+- `evaluation.metrics.prompt_context_expected_path_coverage`: expected files included in prompt context.
+- `evaluation.metrics.complete_file_context_coverage`: whether complete-file source context was built.
+- `evaluation.metrics.complete_file_expected_path_coverage`: expected files included as complete files.
+- `evaluation.metrics.overall_score`: weighted quality score used by `--eval-fail-under`.
+- `evaluation.rag[*].prompt_context_matched_paths`: expected paths present in the prompt context.
+- `evaluation.rag[*].complete_file_matched_paths`: expected paths present as complete files.
+- `evaluation.rag[*].required_context_paths`: CodeGraph trace paths forced into context for route questions.
+
 Impact JSON fields:
 
 - `source`: `explicit` or `git_diff`.
@@ -79,6 +93,7 @@ Readiness JSON fields:
 - `passed`: final readiness verdict.
 - `threshold`: evaluation score threshold used by the gate.
 - `checks`: named checks with `ok`, `warning`, or `error` status.
+- `checks[*].detail`: includes evaluation coverage metrics for the evaluation check.
 - `summary`: names grouped by status.
 
 Manifest JSON fields:

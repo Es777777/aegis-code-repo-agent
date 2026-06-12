@@ -888,6 +888,35 @@ class CLITest(unittest.TestCase):
             evaluation_path = Path(payload["outputs"]["evaluation"])
             self.assertTrue(evaluation_path.exists())
 
+    def test_eval_text_output_includes_prompt_context_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "examples/sample_repo",
+                    "--out",
+                    tmp,
+                    "--max-files",
+                    "100",
+                    "--no-cache",
+                    "--eval",
+                    "--eval-fail-under",
+                    "1.0",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("prompt context coverage", completed.stdout)
+            self.assertIn("prompt expected-path coverage", completed.stdout)
+            self.assertIn("complete-file context coverage", completed.stdout)
+            self.assertIn("complete-file expected-path coverage", completed.stdout)
+
     def test_ready_json_output_is_machine_readable_and_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             completed = subprocess.run(

@@ -463,6 +463,22 @@ def main() -> int:
             "- source context coverage: "
             f"{metric_ratio(metrics['source_context_hits'], metrics['source_context_cases'], metrics['source_context_coverage'])}"
         )
+        print(
+            "- prompt context coverage: "
+            f"{metric_ratio(metrics['prompt_context_hits'], metrics['prompt_context_cases'], metrics['prompt_context_coverage'])}"
+        )
+        print(
+            "- prompt expected-path coverage: "
+            f"{metric_ratio(metrics['prompt_context_expected_path_hits'], metrics['prompt_context_expected_paths'], metrics['prompt_context_expected_path_coverage'])}"
+        )
+        print(
+            "- complete-file context coverage: "
+            f"{metric_ratio(metrics['complete_file_context_hits'], metrics['complete_file_context_cases'], metrics['complete_file_context_coverage'])}"
+        )
+        print(
+            "- complete-file expected-path coverage: "
+            f"{metric_ratio(metrics['complete_file_expected_path_hits'], metrics['complete_file_expected_paths'], metrics['complete_file_expected_path_coverage'])}"
+        )
         print(f"- overall score: {metrics['overall_score']:.2%}")
         print(f"- evaluation: {payload['outputs']['evaluation']}")
         gate = payload.get("quality_gate")
