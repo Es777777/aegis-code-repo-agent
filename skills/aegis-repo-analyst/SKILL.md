@@ -170,7 +170,8 @@ complete-file context, and required-context safety. Treat
 
 AEGIS also writes `manifest.json` for each run. Use it to verify the AEGIS
 version, run configuration, repository identity, summary stats, and artifact
-inventory for a delivered analysis.
+inventory for a delivered analysis. Artifact entries include byte sizes and
+SHA256 hashes; readiness verifies required artifact integrity.
 
 ### Serve HTML Report
 

@@ -119,4 +119,4 @@ Manifest JSON fields:
 - `repo`: analyzed repository name, root, and git state when available.
 - `run`: scan and LLM configuration used for the analysis.
 - `stats`: file, CodeGraph, RAG, and finding summaries.
-- `artifacts`: artifact paths, existence, and byte sizes.
+- `artifacts`: artifact paths, existence, byte sizes, and SHA256 digests.

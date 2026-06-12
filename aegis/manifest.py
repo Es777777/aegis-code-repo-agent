@@ -7,9 +7,10 @@ from typing import Any
 
 from aegis import __version__
 from aegis.models import AnalysisResult
+from aegis.utils import file_sha256
 
 
-MANIFEST_SCHEMA_VERSION = "1.0"
+MANIFEST_SCHEMA_VERSION = "1.1"
 
 
 def build_manifest(
@@ -78,6 +79,7 @@ def _artifact_inventory(output_dir: Path) -> dict[str, Any]:
             "path": str(path),
             "exists": path.exists(),
             "size": path.stat().st_size if path.exists() else 0,
+            "sha256": file_sha256(path) if path.exists() else None,
         }
     return artifacts
 

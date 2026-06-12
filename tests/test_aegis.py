@@ -27,6 +27,8 @@ from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndex, RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
 from aegis.rag.retriever import RAGRetriever
+from aegis.readiness import ReadinessAssessor
+from aegis.utils import file_sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -212,9 +214,14 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn("call_graph", data)
             self.assertIn("rag", data["stats"])
             manifest = json.loads((second.output_dir / "manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["schema_version"], "1.0")
+            self.assertEqual(manifest["schema_version"], "1.1")
             self.assertEqual(manifest["repo"]["name"], "sample_repo")
             self.assertTrue(manifest["artifacts"]["knowledge.json"]["exists"])
+            self.assertEqual(
+                manifest["artifacts"]["knowledge.json"]["sha256"],
+                file_sha256(second.output_dir / "knowledge.json"),
+            )
+            self.assertEqual(len(manifest["artifacts"]["knowledge.json"]["sha256"]), 64)
 
     def test_saved_artifacts_can_be_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -224,6 +231,19 @@ class WorkflowTest(unittest.TestCase):
             self.assertEqual(loaded.knowledge.repo_name, "sample_repo")
             self.assertEqual(loaded.output_dir, result.output_dir)
             self.assertGreater(len(rag.chunks), 0)
+
+    def test_readiness_rejects_stale_manifest_artifact_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            (result.output_dir / "report.md").write_text("tampered report\n", encoding="utf-8")
+            readiness = ReadinessAssessor(
+                result,
+                doctor_payload={"passed": True, "errors": 0, "warnings": 0},
+            ).run()
+            manifest_check = next(check for check in readiness["checks"] if check["name"] == "manifest")
+            self.assertEqual(manifest_check["status"], "error")
+            self.assertIn("report.md", manifest_check["detail"]["hash_mismatches"])
+            self.assertFalse(readiness["passed"])
 
     def test_report_includes_scan_scope_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

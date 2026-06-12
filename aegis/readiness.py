@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from aegis.models import AnalysisResult
+from aegis.utils import file_sha256
 
 
 @dataclass
@@ -125,23 +126,62 @@ class ReadinessAssessor:
                 detail={"path": str(path), "error": str(exc)},
             )
         repo = manifest.get("repo", {})
+        artifacts = manifest.get("artifacts", {})
+        required_inventory = [name for name in self.REQUIRED_ARTIFACTS if name != "manifest.json"]
+        missing_inventory: list[str] = []
+        missing_files: list[str] = []
+        size_mismatches: list[str] = []
+        hash_mismatches: list[str] = []
+        missing_hashes: list[str] = []
+        if isinstance(artifacts, dict):
+            for name in required_inventory:
+                entry = artifacts.get(name)
+                if not isinstance(entry, dict):
+                    missing_inventory.append(name)
+                    continue
+                artifact_path = self.result.output_dir / name
+                if not artifact_path.exists():
+                    missing_files.append(name)
+                    continue
+                expected_size = entry.get("size")
+                actual_size = artifact_path.stat().st_size
+                if expected_size != actual_size:
+                    size_mismatches.append(name)
+                expected_hash = entry.get("sha256")
+                if not expected_hash:
+                    missing_hashes.append(name)
+                elif expected_hash != file_sha256(artifact_path):
+                    hash_mismatches.append(name)
+        else:
+            artifacts = {}
+            missing_inventory = required_inventory
         ok = (
-            manifest.get("schema_version") == "1.0"
+            manifest.get("schema_version") == "1.1"
             and repo.get("name") == self.result.knowledge.repo_name
-            and "artifacts" in manifest
+            and isinstance(artifacts, dict)
+            and not missing_inventory
+            and not missing_files
+            and not size_mismatches
+            and not missing_hashes
+            and not hash_mismatches
         )
         return ReadinessCheck(
             name="manifest",
             status="ok" if ok else "error",
             message=(
-                "Manifest describes this analysis run."
+                "Manifest describes this analysis run and verifies required artifact hashes."
                 if ok
-                else "Manifest is missing required metadata or targets a different repository."
+                else "Manifest is missing required metadata, has stale artifact inventory, or targets a different repository."
             ),
             detail={
                 "schema_version": manifest.get("schema_version"),
                 "repo": repo.get("name"),
                 "generated_at": manifest.get("generated_at"),
+                "missing_inventory": missing_inventory,
+                "missing_files": missing_files,
+                "size_mismatches": size_mismatches,
+                "missing_hashes": missing_hashes,
+                "hash_mismatches": hash_mismatches,
             },
         )
 

@@ -353,7 +353,8 @@ commands such as evaluation, impact analysis, or readiness checks. It records:
 - repository name/root/git state
 - run configuration
 - repository, CodeGraph, RAG, and finding statistics
-- artifact paths, existence, and sizes
+- artifact paths, existence, byte sizes, and SHA256 digests
 
 Readiness treats the manifest as a required artifact and verifies that it
-matches the current repository analysis.
+matches the current repository analysis. It also verifies the recorded size and
+SHA256 for required artifacts, so stale or modified outputs fail the gate.
