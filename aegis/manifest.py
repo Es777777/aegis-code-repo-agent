@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -11,6 +12,15 @@ from aegis.utils import file_sha256
 
 
 MANIFEST_SCHEMA_VERSION = "1.1"
+REQUIRED_ANALYSIS_ARTIFACTS = [
+    "knowledge.json",
+    "findings.json",
+    "rag_index.json",
+    "report.md",
+    "report.html",
+    "architecture.mmd",
+    "manifest.json",
+]
 
 
 def build_manifest(
@@ -82,6 +92,105 @@ def _artifact_inventory(output_dir: Path) -> dict[str, Any]:
             "sha256": file_sha256(path) if path.exists() else None,
         }
     return artifacts
+
+
+def verify_manifest_integrity(
+    output_dir: Path,
+    *,
+    repo_name: str | None = None,
+    required_artifacts: list[str] | None = None,
+) -> dict[str, Any]:
+    manifest_path = output_dir / "manifest.json"
+    required = required_artifacts or REQUIRED_ANALYSIS_ARTIFACTS
+    detail: dict[str, Any] = {
+        "path": str(manifest_path),
+        "schema_version": None,
+        "repo": None,
+        "generated_at": None,
+        "missing_inventory": [],
+        "missing_files": [],
+        "size_mismatches": [],
+        "missing_hashes": [],
+        "hash_mismatches": [],
+        "repo_mismatch": False,
+        "error": None,
+    }
+    if not manifest_path.exists():
+        detail["error"] = "manifest.json is missing"
+        return {"ok": False, "detail": detail}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        detail["error"] = f"manifest.json is not readable JSON: {exc}"
+        return {"ok": False, "detail": detail}
+
+    repo = manifest.get("repo", {})
+    artifacts = manifest.get("artifacts", {})
+    detail["schema_version"] = manifest.get("schema_version")
+    detail["repo"] = repo.get("name") if isinstance(repo, dict) else None
+    detail["generated_at"] = manifest.get("generated_at")
+    if repo_name and detail["repo"] != repo_name:
+        detail["repo_mismatch"] = True
+
+    if not isinstance(artifacts, dict):
+        detail["missing_inventory"] = [name for name in required if name != "manifest.json"]
+    else:
+        for name in required:
+            if name == "manifest.json":
+                continue
+            entry = artifacts.get(name)
+            if not isinstance(entry, dict):
+                detail["missing_inventory"].append(name)
+                continue
+            artifact_path = output_dir / name
+            if not artifact_path.exists():
+                detail["missing_files"].append(name)
+                continue
+            expected_size = entry.get("size")
+            actual_size = artifact_path.stat().st_size
+            if expected_size != actual_size:
+                detail["size_mismatches"].append(name)
+            expected_hash = entry.get("sha256")
+            if not expected_hash:
+                detail["missing_hashes"].append(name)
+            elif expected_hash != file_sha256(artifact_path):
+                detail["hash_mismatches"].append(name)
+
+    ok = (
+        detail["schema_version"] == MANIFEST_SCHEMA_VERSION
+        and not detail["repo_mismatch"]
+        and not detail["error"]
+        and not detail["missing_inventory"]
+        and not detail["missing_files"]
+        and not detail["size_mismatches"]
+        and not detail["missing_hashes"]
+        and not detail["hash_mismatches"]
+    )
+    return {"ok": ok, "detail": detail}
+
+
+def format_manifest_integrity_errors(check: dict[str, Any]) -> str:
+    detail = check.get("detail", {})
+    pieces: list[str] = []
+    if detail.get("error"):
+        pieces.append(str(detail["error"]))
+    if detail.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        pieces.append(
+            f"schema_version={detail.get('schema_version')!r}, expected {MANIFEST_SCHEMA_VERSION!r}"
+        )
+    if detail.get("repo_mismatch"):
+        pieces.append(f"manifest repo {detail.get('repo')!r} does not match loaded repository")
+    for key, label in [
+        ("missing_inventory", "missing inventory"),
+        ("missing_files", "missing files"),
+        ("size_mismatches", "size mismatches"),
+        ("missing_hashes", "missing hashes"),
+        ("hash_mismatches", "hash mismatches"),
+    ]:
+        values = detail.get(key) or []
+        if values:
+            pieces.append(f"{label}: {', '.join(values)}")
+    return "; ".join(pieces) or "unknown manifest integrity error"
 
 
 def _git_info(root: Path) -> dict[str, Any]:

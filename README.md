@@ -516,6 +516,10 @@ analysis artifacts belong together and how they were produced.
 `knowledge.json`; RAG questions and evaluation also require the saved
 `rag_index.json` so artifact reuse stays deterministic and does not silently
 depend on the original repository still being available.
+Before reusing the directory, AEGIS verifies `manifest.json` schema, repository
+identity, required artifact sizes, and SHA256 hashes. If any required artifact
+was changed, deleted, or produced by an older manifest schema, `--from-output`
+fails instead of answering from stale evidence.
 
 ```powershell
 python main.py --from-output output\aegis\sample_repo --ask "Where is the entrypoint?" --json

@@ -12,7 +12,7 @@ from aegis.doctor import Doctor
 from aegis.evaluation import Evaluator, builtin_suite, load_suite
 from aegis.knowledge.codegraph import CodeGraphQuery
 from aegis.llm import LLMClient
-from aegis.manifest import build_manifest
+from aegis.manifest import build_manifest, format_manifest_integrity_errors, verify_manifest_integrity
 from aegis.orchestrator.workflow import AegisWorkflow
 from aegis.rag.index import RAGIndexBuilder
 from aegis.rag.qa import QAAnswer, RepositoryQAAgent
@@ -389,6 +389,15 @@ def main() -> int:
     if args.from_output:
         try:
             result = load_analysis_result(Path(args.from_output))
+            manifest_check = verify_manifest_integrity(
+                result.output_dir,
+                repo_name=result.knowledge.repo_name,
+            )
+            if not manifest_check["ok"]:
+                raise ArtifactLoadError(
+                    "Manifest integrity check failed for --from-output: "
+                    + format_manifest_integrity_errors(manifest_check)
+                )
         except ArtifactLoadError as exc:
             raise SystemExit(str(exc)) from exc
     elif not args.repo:

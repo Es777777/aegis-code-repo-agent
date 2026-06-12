@@ -1242,7 +1242,7 @@ class CLITest(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("Artifact is not valid JSON", completed.stderr)
+            self.assertIn("Manifest integrity check failed", completed.stderr)
             self.assertIn("rag_index.json", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
 
@@ -1268,8 +1268,35 @@ class CLITest(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("Required artifact is missing", completed.stderr)
+            self.assertIn("Manifest integrity check failed", completed.stderr)
             self.assertIn("rag_index.json", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
+
+    def test_from_output_rejects_stale_manifest_artifact_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = AegisWorkflow(EDA_SAMPLE, output_root=Path(tmp), max_files=100, use_cache=False).run()
+            (result.output_dir / "report.md").write_text("tampered report\n", encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "main.py",
+                    "--from-output",
+                    str(result.output_dir),
+                    "--ask",
+                    "Where is the entrypoint?",
+                    "--json",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Manifest integrity check failed", completed.stderr)
+            self.assertIn("report.md", completed.stderr)
+            self.assertIn("hash mismatches", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
 
     def test_skill_wrapper_ask_from_output(self) -> None:
