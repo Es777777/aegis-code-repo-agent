@@ -382,11 +382,13 @@ retrieval summaries. Each context block contains:
 - `blocks[*].content`: real line-numbered code, preferably a whole file; large files fall back to focused source windows
 - `blocks[*].complete_file`: `true` when the block contains the entire file
 - `target_context_paths`: files selected by retrieval or required by graph/path hints for LLM reasoning
+- `target_context_budget_chars`: estimated prompt budget needed to pack target files as complete source
 - `missing_target_context_paths`: target files that did not fit into the prompt context
 - `incomplete_target_context_paths`: target files present only as partial source windows
 - `unsatisfied_target_context_paths`: target files that are missing or incomplete
 - `target_context_satisfied`: `false` when any selected target file is not present as a complete file
 - `required_context_paths`: CodeGraph trace paths and explicit file mentions forced into context
+- `required_context_budget_chars`: estimated prompt budget needed to pack required files as complete source
 - `missing_required_context_paths`: required files that did not fit into the prompt context
 - `incomplete_required_context_paths`: required files present only as partial source windows
 - `unsatisfied_required_context_paths`: required files that are missing or incomplete

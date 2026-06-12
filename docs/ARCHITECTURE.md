@@ -235,9 +235,11 @@ Context pack fields:
 - `source_paths`, the real source files included in the prompt context
 - `complete_file_paths`, files included as complete source files
 - `target_context_paths`, files selected by retrieval or required by graph/path hints
+- `target_context_budget_chars`, estimated budget for complete target-file source
 - `missing_target_context_paths`, target files that did not fit into context
 - `incomplete_target_context_paths`, target files present only as partial windows
 - `target_context_satisfied`, `false` unless every target file is complete in context
+- `required_context_budget_chars`, estimated budget for complete required-file source
 - `blocks[*].path`
 - `blocks[*].start_line` / `end_line`
 - `blocks[*].content` with line-numbered source

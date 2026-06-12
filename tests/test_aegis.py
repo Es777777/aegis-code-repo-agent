@@ -447,6 +447,7 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("services/user_service.py", complete_paths)
         self.assertIn("repositories/user_repository.py", complete_paths)
         self.assertIn("app.py", pack.target_context_paths)
+        self.assertGreater(pack.target_context_budget_chars, 0)
         self.assertEqual(pack.missing_target_context_paths(), [])
         self.assertEqual(pack.incomplete_target_context_paths(), [])
         app_block = next(block for block in pack.blocks if block.path == "app.py")
@@ -458,6 +459,7 @@ class RAGRecallTest(unittest.TestCase):
         self.assertIn("self.rows.append", repo_block.content)
         payload = pack.to_dict()
         self.assertTrue(any(block["complete_file"] for block in payload["blocks"]))
+        self.assertGreater(payload["target_context_budget_chars"], 0)
 
     def test_qa_agent_forces_explicit_file_mentions_into_prompt_context(self) -> None:
         knowledge = KnowledgeBuilder(EDA_SAMPLE, max_files=100, use_cache=False).build()
@@ -535,12 +537,15 @@ class RAGRecallTest(unittest.TestCase):
             self.assertEqual(pack.missing_required_context_paths(), [])
             self.assertEqual(pack.incomplete_required_context_paths(), ["large_module.py"])
             self.assertEqual(pack.incomplete_target_context_paths(), ["large_module.py"])
+            self.assertGreater(pack.required_context_budget_chars, pack.max_chars)
+            self.assertGreater(pack.to_dict()["required_context_budget_chars"], pack.max_chars)
             self.assertEqual(pack.unsatisfied_required_context_paths(), ["large_module.py"])
             self.assertEqual(pack.unsatisfied_target_context_paths(), ["large_module.py"])
             self.assertFalse(pack.to_dict()["required_context_satisfied"])
             self.assertFalse(pack.to_dict()["target_context_satisfied"])
             self.assertIn("Incomplete required context paths: large_module.py", pack.render())
             self.assertIn("Incomplete target context paths: large_module.py", pack.render())
+            self.assertIn("Required complete-file budget estimate:", pack.render())
 
     def test_qa_agent_skips_llm_when_required_context_is_missing(self) -> None:
         class FailingLLM:

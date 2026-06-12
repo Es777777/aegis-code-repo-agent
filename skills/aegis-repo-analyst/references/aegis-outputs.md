@@ -65,6 +65,8 @@ Ask JSON fields:
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
 - `qa.required_context_paths`: CodeGraph trace paths, explicit file mentions, and `--context-file` paths forced into prompt context.
 - `qa.target_context_paths`: retrieval-selected and required files that should be complete in prompt context.
+- `qa.context_pack.required_context_budget_chars`: estimated budget for complete required-file source.
+- `qa.context_pack.target_context_budget_chars`: estimated budget for complete target-file source.
 - `qa.missing_target_context_paths`: target files absent from prompt context because of budget or missing source.
 - `qa.incomplete_target_context_paths`: target files present only as partial source windows.
 - `qa.unsatisfied_target_context_paths`: target files absent from prompt context or present only partially.

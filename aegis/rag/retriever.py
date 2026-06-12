@@ -95,6 +95,8 @@ class RAGContextPack:
     blocks: list[RAGContextBlock]
     required_context_paths: list[str] | None = None
     target_context_paths: list[str] | None = None
+    required_context_budget_chars: int = 0
+    target_context_budget_chars: int = 0
     dropped_blocks: int = 0
 
     def render(self) -> str:
@@ -112,10 +114,12 @@ class RAGContextPack:
             f"Files in context: {', '.join(source_paths) if source_paths else 'none'}",
             f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
             f"Target context paths: {', '.join(self.target_context_paths or []) or 'none'}",
+            f"Target complete-file budget estimate: {self.target_context_budget_chars} chars",
             f"Missing target context paths: {', '.join(missing_target_paths) or 'none'}",
             f"Incomplete target context paths: {', '.join(incomplete_target_paths) or 'none'}",
             f"Target context satisfied: {str(not unsatisfied_target_paths).lower()}",
             f"Required context paths: {', '.join(self.required_context_paths or []) or 'none'}",
+            f"Required complete-file budget estimate: {self.required_context_budget_chars} chars",
             f"Missing required context paths: {', '.join(missing_required_paths) or 'none'}",
             f"Incomplete required context paths: {', '.join(incomplete_required_paths) or 'none'}",
             f"Required context satisfied: {str(not unsatisfied_required_paths).lower()}",
@@ -172,6 +176,8 @@ class RAGContextPack:
             "dropped_blocks": self.dropped_blocks,
             "required_context_paths": self.required_context_paths or [],
             "target_context_paths": self.target_context_paths or [],
+            "required_context_budget_chars": self.required_context_budget_chars,
+            "target_context_budget_chars": self.target_context_budget_chars,
             "missing_required_context_paths": self.missing_required_context_paths(),
             "incomplete_required_context_paths": self.incomplete_required_context_paths(),
             "unsatisfied_required_context_paths": self.unsatisfied_required_context_paths(),
@@ -429,15 +435,27 @@ class RAGRetriever:
                 complete_file=False,
                 allow_truncate=True,
             )
+        required_context_paths = list(dict.fromkeys(required_paths or []))
+        target_context_paths = list(dict.fromkeys([*required_context_paths, *path_order]))
         return RAGContextPack(
             query=query,
             max_chars=max_chars,
             used_chars=min(used_chars, max_chars),
             blocks=blocks,
-            required_context_paths=list(dict.fromkeys(required_paths or [])),
-            target_context_paths=list(dict.fromkeys([*(required_paths or []), *path_order])),
+            required_context_paths=required_context_paths,
+            target_context_paths=target_context_paths,
+            required_context_budget_chars=self._full_file_context_budget(required_context_paths),
+            target_context_budget_chars=self._full_file_context_budget(target_context_paths),
             dropped_blocks=dropped,
         )
+
+    def _full_file_context_budget(self, paths: list[str]) -> int:
+        total = 0
+        for path in dict.fromkeys(paths):
+            full_file = self._full_source_file_chunk(path)
+            if full_file:
+                total += len(full_file.text) + 260
+        return total
 
     def _required_path_results(self, paths: list[str]) -> list[RetrievalResult]:
         results: list[RetrievalResult] = []
