@@ -189,7 +189,9 @@ def qa_payload(agent: RepositoryQAAgent, answer: QAAnswer) -> dict[str, Any]:
         "graph_context": answer.graph_context,
         "required_context_paths": answer.required_context_paths,
         "missing_required_context_paths": answer.context_pack.missing_required_context_paths(),
-        "required_context_satisfied": not answer.context_pack.missing_required_context_paths(),
+        "incomplete_required_context_paths": answer.context_pack.incomplete_required_context_paths(),
+        "unsatisfied_required_context_paths": answer.context_pack.unsatisfied_required_context_paths(),
+        "required_context_satisfied": not answer.context_pack.unsatisfied_required_context_paths(),
         "context_pack": answer.context_pack.to_dict(),
         "llm_prompt": {
             "system": answer.llm_system_prompt,
@@ -256,8 +258,12 @@ def render_llm_prompt_markdown(answer: QAAnswer) -> str:
             f"Required context paths: {', '.join(answer.required_context_paths) or 'none'}",
             "Missing required context paths: "
             f"{', '.join(answer.context_pack.missing_required_context_paths()) or 'none'}",
+            "Incomplete required context paths: "
+            f"{', '.join(answer.context_pack.incomplete_required_context_paths()) or 'none'}",
+            "Unsatisfied required context paths: "
+            f"{', '.join(answer.context_pack.unsatisfied_required_context_paths()) or 'none'}",
             "Required context satisfied: "
-            f"{str(not answer.context_pack.missing_required_context_paths()).lower()}",
+            f"{str(not answer.context_pack.unsatisfied_required_context_paths()).lower()}",
             f"Files in context: {', '.join(answer.context_pack.source_paths()) or 'none'}",
             f"Complete files in context: {', '.join(answer.context_pack.complete_file_paths()) or 'none'}",
             "",

@@ -114,6 +114,19 @@ class KnowledgeBuilderTest(unittest.TestCase):
         self.assertEqual(scan_stats["exclude"], ["app.py"])
         self.assertGreaterEqual(scan_stats["skipped"].get("scope", 0), 1)
 
+    def test_max_files_reports_all_unscanned_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for idx in range(5):
+                (root / f"module_{idx}.py").write_text(
+                    f"def fn_{idx}():\n    return {idx}\n",
+                    encoding="utf-8",
+                )
+            knowledge = KnowledgeBuilder(root, max_files=2, use_cache=False).build()
+            self.assertEqual(knowledge.stats["file_count"], 2)
+            scan_stats = knowledge.stats["scan"]
+            self.assertEqual(scan_stats["skipped"].get("max_files"), 3)
+
 
 class WorkflowTest(unittest.TestCase):
     def test_workflow_writes_outputs_and_uses_cache(self) -> None:
@@ -259,6 +272,25 @@ class RAGRecallTest(unittest.TestCase):
         self.assertFalse(pack.to_dict()["required_context_satisfied"])
         self.assertIn("Missing required context paths: src/timing/timing_model.py", pack.render())
 
+    def test_required_context_contract_reports_incomplete_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lines = [f"def fn_{idx}(): return '{idx}' * 40" for idx in range(80)]
+            (root / "large_module.py").write_text("\n".join(lines), encoding="utf-8")
+            knowledge = KnowledgeBuilder(root, max_files=10, use_cache=False).build()
+            index = RAGIndexBuilder(knowledge).build()
+            pack = RAGRetriever(index).context_pack(
+                "please analyze large_module.py",
+                top_k=1,
+                max_chars=700,
+                required_paths=["large_module.py"],
+            )
+            self.assertEqual(pack.missing_required_context_paths(), [])
+            self.assertEqual(pack.incomplete_required_context_paths(), ["large_module.py"])
+            self.assertEqual(pack.unsatisfied_required_context_paths(), ["large_module.py"])
+            self.assertFalse(pack.to_dict()["required_context_satisfied"])
+            self.assertIn("Incomplete required context paths: large_module.py", pack.render())
+
     def test_qa_agent_skips_llm_when_required_context_is_missing(self) -> None:
         class FailingLLM:
             @property
@@ -278,6 +310,31 @@ class RAGRecallTest(unittest.TestCase):
         self.assertFalse(answer.used_llm)
         self.assertEqual(answer.context_pack.missing_required_context_paths(), ["src/timing/timing_model.py"])
         self.assertIn("Required context missing", answer.answer)
+        self.assertIn("LLM request skipped", answer.answer)
+
+    def test_qa_agent_skips_llm_when_required_context_is_incomplete(self) -> None:
+        class FailingLLM:
+            @property
+            def available(self) -> bool:
+                return True
+
+            def complete(self, *, system: str, user: str) -> str:
+                raise AssertionError("LLM must not be called with incomplete required context")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lines = [f"def fn_{idx}(): return '{idx}' * 40" for idx in range(80)]
+            (root / "large_module.py").write_text("\n".join(lines), encoding="utf-8")
+            knowledge = KnowledgeBuilder(root, max_files=10, use_cache=False).build()
+            index = RAGIndexBuilder(knowledge).build()
+            answer = RepositoryQAAgent(knowledge, index, llm=FailingLLM()).answer(
+                "please analyze large_module.py",
+                top_k=1,
+                max_context_chars=700,
+            )
+        self.assertFalse(answer.used_llm)
+        self.assertEqual(answer.context_pack.incomplete_required_context_paths(), ["large_module.py"])
+        self.assertIn("Required context missing or incomplete", answer.answer)
         self.assertIn("LLM request skipped", answer.answer)
 
     def test_offline_qa_prints_source_context(self) -> None:

@@ -64,7 +64,9 @@ Ask JSON fields:
 - `qa.graph_context`: CodeGraph route/call-chain trace when a route is detected.
 - `qa.required_context_paths`: CodeGraph trace paths and explicit file mentions forced into prompt context.
 - `qa.missing_required_context_paths`: required paths absent from prompt context because of budget or missing source.
-- `qa.required_context_satisfied`: whether it is safe to rely on the prompt for required files.
+- `qa.incomplete_required_context_paths`: required paths present only as partial source windows.
+- `qa.unsatisfied_required_context_paths`: required paths absent from prompt context or present only partially.
+- `qa.required_context_satisfied`: whether every required file is present as complete line-numbered source.
 - `qa.llm_prompt`: exact system/user prompt assembled for an OpenAI-compatible chat model.
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
 - `qa.context_pack.complete_file_paths`: files included as complete line-numbered source.

@@ -89,9 +89,10 @@ not just summaries. Prefer blocks where `complete_file=true`;
 `qa.context_pack.complete_file_paths` lists every whole file packed into the
 prompt context. For route questions and explicit file mentions, AEGIS uses
 required RAG context so downstream service/repository files are placed into the
-prompt when budget allows. If `qa.missing_required_context_paths` is non-empty,
-do not ask an LLM to answer from that payload; increase the budget with
-`--context-chars` or narrow the question:
+prompt when budget allows. If `qa.missing_required_context_paths` or
+`qa.incomplete_required_context_paths` is non-empty, do not ask an LLM to answer
+from that payload; increase the budget with `--context-chars` or narrow the
+question until `qa.required_context_satisfied=true`:
 
 ```powershell
 python skills\aegis-repo-analyst\scripts\run_aegis.py ask <repo-path> "Where is the entrypoint?" --context-chars 48000 --json
@@ -215,7 +216,7 @@ When answering the user:
 
 - Prefer claims backed by file paths and line numbers.
 - Mention whether the answer came from offline RAG or LLM synthesis.
-- Check `qa.required_context_satisfied`; if false, report the missing files and ask for a larger context budget.
+- Check `qa.required_context_satisfied`; if false, report missing or incomplete files and ask for a larger context budget.
 - If retrieval is weak, say what evidence is missing.
 - For route questions, include the CodeGraph trace when available.
 - For architecture questions, cite `report.md` sections and `knowledge.json`/`rag_index.json` when useful.

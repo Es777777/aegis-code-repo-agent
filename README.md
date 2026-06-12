@@ -87,7 +87,7 @@ python main.py <repo-path> --max-files 2000
 python main.py <repo-path> --include "src/**/*.py" --include "*.toml" --exclude "*_test.py"
 ```
 
-扫描范围和跳过原因会写入 `knowledge.json` 的 `stats.scan`，报告摘要也会显示 include/exclude 与跳过文件统计。
+扫描范围和跳过原因会写入 `knowledge.json` 的 `stats.scan`，报告摘要也会显示 include/exclude 与跳过文件统计。`skipped.max_files` 表示符合范围但因 `--max-files` 上限未扫描的候选文件数。
 
 禁用缓存：
 
@@ -370,7 +370,9 @@ retrieval summaries. Each context block contains:
 - `blocks[*].complete_file`: `true` when the block contains the entire file
 - `required_context_paths`: CodeGraph trace paths and explicit file mentions forced into context
 - `missing_required_context_paths`: required files that did not fit into the prompt context
-- `required_context_satisfied`: `false` when an answer must not rely on missing files
+- `incomplete_required_context_paths`: required files present only as partial source windows
+- `unsatisfied_required_context_paths`: required files that are missing or incomplete
+- `required_context_satisfied`: `false` when required files are missing or incomplete
 - `llm_prompt`: the exact system/user prompt assembled for the LLM
 - the original retrieved chunk id and matched terms
 - a configurable character budget
@@ -407,10 +409,12 @@ AEGIS also treats that file as required context and attempts to pack it as a
 complete line-numbered source file. `llm_prompt.md` records the full prompt that
 would be sent to an OpenAI-compatible chat model, so demos and downstream agents
 can verify exactly which files entered the LLM context.
-When `missing_required_context_paths` is non-empty, AEGIS skips the LLM call for
-that question and tells the caller to increase `--context-chars` or narrow the
-question. This prevents a model from answering about files that were only
-retrieved by name but never actually placed into prompt context.
+When `missing_required_context_paths` or `incomplete_required_context_paths` is
+non-empty, `required_context_satisfied=false` and AEGIS skips the LLM call for
+that question. This prevents a model from answering about files that were only
+retrieved by name or only partially packed into prompt context. Increase
+`--context-chars` or narrow the question until required files appear in
+`complete_file_paths`.
 
 ## Change Impact Analysis
 

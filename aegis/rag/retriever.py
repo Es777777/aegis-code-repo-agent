@@ -99,6 +99,8 @@ class RAGContextPack:
     def render(self) -> str:
         source_paths = self.source_paths()
         missing_required_paths = self.missing_required_context_paths()
+        incomplete_required_paths = self.incomplete_required_context_paths()
+        unsatisfied_required_paths = self.unsatisfied_required_context_paths()
         lines = [
             "AEGIS RAG CONTEXT PACK",
             f"Query: {self.query}",
@@ -107,15 +109,16 @@ class RAGContextPack:
             f"Complete files in context: {', '.join(self.complete_file_paths()) or 'none'}",
             f"Required context paths: {', '.join(self.required_context_paths or []) or 'none'}",
             f"Missing required context paths: {', '.join(missing_required_paths) or 'none'}",
-            f"Required context satisfied: {str(not missing_required_paths).lower()}",
+            f"Incomplete required context paths: {', '.join(incomplete_required_paths) or 'none'}",
+            f"Required context satisfied: {str(not unsatisfied_required_paths).lower()}",
             "Instruction: answer only from the real source files and line ranges below; cite paths and lines.",
             "",
         ]
-        if missing_required_paths:
+        if unsatisfied_required_paths:
             lines.extend(
                 [
-                    "Warning: required files are missing from this context pack. "
-                    "Do not answer claims that depend on missing files; ask for a larger context budget.",
+                    "Warning: required files are missing or incomplete in this context pack. "
+                    "Do not answer claims that depend on those files; ask for a larger context budget.",
                     "",
                 ]
             )
@@ -153,7 +156,9 @@ class RAGContextPack:
             "dropped_blocks": self.dropped_blocks,
             "required_context_paths": self.required_context_paths or [],
             "missing_required_context_paths": self.missing_required_context_paths(),
-            "required_context_satisfied": not self.missing_required_context_paths(),
+            "incomplete_required_context_paths": self.incomplete_required_context_paths(),
+            "unsatisfied_required_context_paths": self.unsatisfied_required_context_paths(),
+            "required_context_satisfied": not self.unsatisfied_required_context_paths(),
             "source_paths": self.source_paths(),
             "complete_file_paths": self.complete_file_paths(),
             "blocks": [block.to_dict() for block in self.blocks],
@@ -184,6 +189,25 @@ class RAGContextPack:
             for path in dict.fromkeys(self.required_context_paths or [])
             if path not in source_paths
         ]
+
+    def incomplete_required_context_paths(self) -> list[str]:
+        source_paths = set(self.source_paths())
+        complete_paths = set(self.complete_file_paths())
+        return [
+            path
+            for path in dict.fromkeys(self.required_context_paths or [])
+            if path in source_paths and path not in complete_paths
+        ]
+
+    def unsatisfied_required_context_paths(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                [
+                    *self.missing_required_context_paths(),
+                    *self.incomplete_required_context_paths(),
+                ]
+            )
+        )
 
 
 class RAGRetriever:

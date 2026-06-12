@@ -62,8 +62,8 @@ class RepositoryQAAgent:
             graph_context=graph_context,
             context_pack=context_pack,
         )
-        missing_required_paths = context_pack.missing_required_context_paths()
-        if self.llm and self.llm.available and not missing_required_paths:
+        unsatisfied_required_paths = context_pack.unsatisfied_required_context_paths()
+        if self.llm and self.llm.available and not unsatisfied_required_paths:
             try:
                 return QAAnswer(
                     question=question,
@@ -81,7 +81,7 @@ class RepositoryQAAgent:
                     question,
                     results,
                     graph_context,
-                    missing_required_paths=missing_required_paths,
+                    missing_required_paths=unsatisfied_required_paths,
                 )
                 fallback += f"\n\nLLM request failed; returned offline evidence answer instead: {exc}"
                 return QAAnswer(
@@ -95,15 +95,15 @@ class RepositoryQAAgent:
                     graph_context=graph_context,
                     used_llm=False,
                 )
-        if self.llm and self.llm.available and missing_required_paths:
+        if self.llm and self.llm.available and unsatisfied_required_paths:
             fallback = self._offline_answer(
                 question,
                 results,
                 graph_context,
-                missing_required_paths=missing_required_paths,
+                missing_required_paths=unsatisfied_required_paths,
             )
             fallback += (
-                "\n\nLLM request skipped because required files were not included "
+                "\n\nLLM request skipped because required files were missing or incomplete "
                 "in the prompt context. Increase --context-chars or narrow the question."
             )
             return QAAnswer(
@@ -123,7 +123,7 @@ class RepositoryQAAgent:
                 question,
                 results,
                 graph_context,
-                missing_required_paths=missing_required_paths,
+                missing_required_paths=unsatisfied_required_paths,
             ),
             results=results,
             context_pack=context_pack,
@@ -156,7 +156,7 @@ class RepositoryQAAgent:
             lines.extend(
                 [
                     "",
-                    "Required context missing:",
+                    "Required context missing or incomplete:",
                     *[f"   - {path}" for path in missing_required_paths],
                     "Increase --context-chars or ask a narrower question before relying on an LLM answer.",
                 ]

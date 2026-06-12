@@ -30,9 +30,6 @@ class RepoScanner:
         cached_records = cached_records or {}
         files: list[FileRecord] = []
         for path in self.root.rglob("*"):
-            if len(files) >= self.max_files:
-                self.skipped["max_files"] += 1
-                break
             if not path.is_file():
                 continue
             if is_ignored(path):
@@ -44,6 +41,9 @@ class RepoScanner:
             relative = relpath(path, self.root)
             if not self._matches_scope(relative):
                 self.skipped["scope"] += 1
+                continue
+            if len(files) >= self.max_files:
+                self.skipped["max_files"] += 1
                 continue
             try:
                 content_hash = file_sha256(path)

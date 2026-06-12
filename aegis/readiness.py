@@ -258,6 +258,8 @@ class ReadinessAssessor:
             context_pack.get("complete_file_paths", []) if isinstance(context_pack, dict) else []
         )
         missing_required = self.qa_payload.get("missing_required_context_paths", [])
+        incomplete_required = self.qa_payload.get("incomplete_required_context_paths", [])
+        unsatisfied_required = self.qa_payload.get("unsatisfied_required_context_paths", [])
         satisfied = bool(self.qa_payload.get("required_context_satisfied"))
         ok = (
             not missing_artifacts
@@ -266,6 +268,8 @@ class ReadinessAssessor:
             and bool(complete_file_paths)
             and satisfied
             and not missing_required
+            and not incomplete_required
+            and not unsatisfied_required
         )
         return ReadinessCheck(
             name="qa",
@@ -283,6 +287,8 @@ class ReadinessAssessor:
                 "complete_file_paths": complete_file_paths,
                 "required_context_satisfied": satisfied,
                 "missing_required_context_paths": missing_required,
+                "incomplete_required_context_paths": incomplete_required,
+                "unsatisfied_required_context_paths": unsatisfied_required,
             },
         )
 
