@@ -15,8 +15,9 @@ AEGIS is located in the parent project that contains `main.py` and the `aegis/` 
 
 1. Identify the target repository path.
 2. Run AEGIS analysis.
-3. Read the generated report or ask a RAG question.
-4. Cite evidence from `report.md`, `knowledge.json`, `rag_index.json`, or CLI output.
+3. Inspect `run_summary.json` first to see status, available artifacts, and next actions.
+4. Read the generated report or ask a RAG question.
+5. Cite evidence from `report.md`, `knowledge.json`, `rag_index.json`, `qa_answer.json`, or CLI output.
 
 Prefer the bundled script:
 
@@ -58,12 +59,17 @@ output/aegis/<repo-name>/
   report.html
   architecture.mmd
   manifest.json
+  run_summary.json
   qa_answer.json
   context_pack.md
   llm_prompt.md
 ```
 
-Summarize the important output paths for the user.
+Summarize the important output paths for the user. When `run_summary.json`
+exists, treat it as the handoff index: check `status`, `next_actions`,
+`qa.context_safe_for_llm`, `evaluation.overall_score`, and
+`readiness.passed` before deciding whether the output is ready or needs another
+command.
 
 ### Ask A Question With RAG
 
@@ -194,6 +200,11 @@ version, run configuration, repository identity, summary stats, and artifact
 inventory for a delivered analysis. Artifact entries include byte sizes and
 SHA256 hashes; readiness verifies required artifact integrity.
 
+AEGIS also writes `run_summary.json` after analysis and post-run commands. Use
+it as the first file for downstream orchestration: `status` tells whether the
+directory is only `analyzed`, `qa_checked`, `evaluated`, `ready`, or
+`needs_attention`, and `next_actions` says which command to run next.
+
 ### Serve HTML Report
 
 ```powershell
@@ -248,6 +259,7 @@ When answering the user:
 
 - Prefer claims backed by file paths and line numbers.
 - Mention whether the answer came from offline RAG or LLM synthesis.
+- Inspect `run_summary.json` first when it exists, especially `status` and `next_actions`.
 - Check `qa.required_context_satisfied`; if false, report missing or incomplete files and ask for a larger context budget.
 - If retrieval is weak, say what evidence is missing.
 - For route questions, include the CodeGraph trace when available.

@@ -1041,6 +1041,15 @@ class PackagingTest(unittest.TestCase):
         self.assertIn('ready.add_argument("--ask")', script)
         self.assertIn('if getattr(args, "llm", False):', script)
 
+    def test_skill_docs_promote_run_summary_handoff(self) -> None:
+        skill = (ROOT / "skills" / "aegis-repo-analyst" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("run_summary.json", skill)
+        self.assertIn("Inspect `run_summary.json` first", skill)
+        self.assertIn("`status` tells whether", skill)
+        self.assertIn("`next_actions`", skill)
+
 
 class DoctorTest(unittest.TestCase):
     def test_doctor_json_passes_for_valid_repo(self) -> None:

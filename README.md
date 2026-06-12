@@ -319,6 +319,7 @@ python main.py <repo-path> --eval-suite suite.json --json
 - `python -m unittest discover -s tests -v`
 - `examples/sample_repo` 内置评测门禁
 - `examples/eda_repo` 内置评测门禁
+- `run_summary.json` handoff 门禁，确认 readiness、QA 上下文安全和自引用 artifact 状态
 
 ## Codex Skill
 
