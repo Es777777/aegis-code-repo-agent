@@ -29,6 +29,11 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Editable install smoke test
+        run: |
+          python -m pip install -e .
+          aegis --help
+
       - name: Sample repo evaluation gate
         run: python main.py examples/sample_repo --max-files 100 --no-cache --eval --eval-fail-under 1.0 --json
 

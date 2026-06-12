@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 import os
 from pathlib import Path
@@ -208,6 +209,13 @@ class EnvConfigTest(unittest.TestCase):
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
+
+
+class PackagingTest(unittest.TestCase):
+    def test_console_script_module_is_packaged(self) -> None:
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(data["project"]["scripts"]["aegis"], "main:main")
+        self.assertIn("main", data["tool"]["setuptools"]["py-modules"])
 
 
 class CLITest(unittest.TestCase):

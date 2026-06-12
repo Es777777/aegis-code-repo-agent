@@ -31,6 +31,7 @@ Issues = "https://github.com/Es777777/aegis-code-repo-agent/issues"
 aegis = "main:main"
 
 [tool.setuptools]
+py-modules = ["main"]
 packages = [
   "aegis",
   "aegis.agents",
