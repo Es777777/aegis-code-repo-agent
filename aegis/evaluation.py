@@ -123,6 +123,8 @@ class Evaluator:
         rag_hits = sum(1 for case in rag_cases if case["hit"])
         trace_hits = sum(1 for case in trace_cases if case["hit"])
         source_hits = sum(1 for case in rag_cases if case["source_context_available"])
+        prompt_hits = sum(1 for case in rag_cases if case["prompt_context_available"])
+        complete_file_hits = sum(1 for case in rag_cases if case["complete_file_context_available"])
         return {
             "suite": suite.name,
             "repo": self.knowledge.repo_name,
@@ -136,7 +138,21 @@ class Evaluator:
                 "source_context_cases": rag_total,
                 "source_context_hits": source_hits,
                 "source_context_coverage": self._rate(source_hits, rag_total),
-                "overall_score": self._overall_score(rag_hits, rag_total, trace_hits, trace_total, source_hits),
+                "prompt_context_cases": rag_total,
+                "prompt_context_hits": prompt_hits,
+                "prompt_context_coverage": self._rate(prompt_hits, rag_total),
+                "complete_file_context_cases": rag_total,
+                "complete_file_context_hits": complete_file_hits,
+                "complete_file_context_coverage": self._rate(complete_file_hits, rag_total),
+                "overall_score": self._overall_score(
+                    rag_hits,
+                    rag_total,
+                    trace_hits,
+                    trace_total,
+                    source_hits,
+                    prompt_hits,
+                    complete_file_hits,
+                ),
             },
             "rag": rag_cases,
             "trace": trace_cases,
@@ -152,12 +168,21 @@ class Evaluator:
             result.chunk.kind == "source" or self.retriever.source_companion(result.chunk)
             for result in results
         )
+        context_pack = self.retriever.context_pack(case.question, top_k=case.top_k)
+        prompt_context_paths = context_pack.source_paths()
+        complete_file_paths = context_pack.complete_file_paths()
+        prompt_context_available = bool(context_pack.blocks and prompt_context_paths)
+        complete_file_context_available = bool(expected.intersection(complete_file_paths))
         return {
             **asdict(case),
             "hit": bool(matched),
             "matched_paths": matched,
             "result_paths": unique_paths,
             "source_context_available": source_context_available,
+            "prompt_context_available": prompt_context_available,
+            "prompt_context_paths": prompt_context_paths,
+            "complete_file_context_available": complete_file_context_available,
+            "complete_file_paths": complete_file_paths,
             "top_results": [
                 {
                     "title": result.chunk.title,
@@ -211,11 +236,15 @@ class Evaluator:
         trace_hits: int,
         trace_total: int,
         source_hits: int,
+        prompt_hits: int,
+        complete_file_hits: int,
     ) -> float:
         weights: list[tuple[float, float]] = []
         if rag_total:
-            weights.append((0.5, cls._rate(rag_hits, rag_total)))
-            weights.append((0.25, cls._rate(source_hits, rag_total)))
+            weights.append((0.4, cls._rate(rag_hits, rag_total)))
+            weights.append((0.2, cls._rate(source_hits, rag_total)))
+            weights.append((0.2, cls._rate(prompt_hits, rag_total)))
+            weights.append((0.2, cls._rate(complete_file_hits, rag_total)))
         if trace_total:
             weights.append((0.25, cls._rate(trace_hits, trace_total)))
         if not weights:

@@ -145,7 +145,7 @@ python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --suite s
 python skills\aegis-repo-analyst\scripts\run_aegis.py eval <repo-path> --fail-under 0.9
 ```
 
-Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`. `--fail-under` turns the score into a hard quality gate for CI or competition scripts.
+Use this before claiming the system is ready. The evaluation reports RAG recall, CodeGraph trace success, source context coverage, prompt context coverage, complete-file context coverage, and an overall score. Results are also written to `output/aegis/<repo-name>/evaluation.json`. `--fail-under` turns the score into a hard quality gate for CI or competition scripts.
 
 ### Run Readiness Gate
 
@@ -184,7 +184,7 @@ Core variables:
 AEGIS_REPO_PATH=examples/sample_repo
 AEGIS_OUTPUT_DIR=output/aegis
 AEGIS_MAX_FILES=1500
-AEGIS_RAG_CONTEXT_CHARS=16000
+AEGIS_RAG_CONTEXT_CHARS=48000
 AEGIS_USE_CACHE=true
 ```
 

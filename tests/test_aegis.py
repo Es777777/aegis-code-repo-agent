@@ -252,6 +252,12 @@ class EvaluationTest(unittest.TestCase):
         self.assertEqual(metrics["rag_cases"], 8)
         self.assertGreaterEqual(metrics["rag_recall"], 0.75)
         self.assertGreaterEqual(metrics["source_context_coverage"], 0.75)
+        self.assertGreaterEqual(metrics["prompt_context_coverage"], 0.75)
+        self.assertGreaterEqual(metrics["complete_file_context_coverage"], 0.75)
+        first_case = evaluation["rag"][0]
+        self.assertTrue(first_case["prompt_context_available"])
+        self.assertTrue(first_case["complete_file_context_available"])
+        self.assertIn("src/main_entrypoint.py", first_case["complete_file_paths"])
 
     def test_custom_eval_suite_file_loads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -897,6 +903,11 @@ class CLITest(unittest.TestCase):
                 check_names,
                 {"doctor", "artifacts", "manifest", "knowledge", "codegraph", "rag", "evaluation"},
             )
+            evaluation_check = next(
+                check for check in payload["readiness"]["checks"] if check["name"] == "evaluation"
+            )
+            self.assertEqual(evaluation_check["detail"]["prompt_context_coverage"], 1.0)
+            self.assertEqual(evaluation_check["detail"]["complete_file_context_coverage"], 1.0)
             self.assertEqual(payload["readiness"]["threshold"], 1.0)
             self.assertTrue(Path(payload["outputs"]["readiness"]).exists())
             self.assertTrue(Path(payload["outputs"]["manifest"]).exists())

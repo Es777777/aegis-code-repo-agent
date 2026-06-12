@@ -224,6 +224,8 @@ class ReadinessAssessor:
                 "rag_recall": metrics.get("rag_recall"),
                 "trace_success_rate": metrics.get("trace_success_rate"),
                 "source_context_coverage": metrics.get("source_context_coverage"),
+                "prompt_context_coverage": metrics.get("prompt_context_coverage"),
+                "complete_file_context_coverage": metrics.get("complete_file_context_coverage"),
             },
         )
 
