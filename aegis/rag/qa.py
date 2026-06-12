@@ -25,6 +25,8 @@ class QAAnswer:
     llm_user_prompt: str = ""
     graph_context: dict[str, Any] | None = None
     used_llm: bool = False
+    context_safe_for_llm: bool = False
+    llm_skip_reason: str = ""
 
 
 class RepositoryQAAgent:
@@ -63,7 +65,9 @@ class RepositoryQAAgent:
             context_pack=context_pack,
         )
         unsatisfied_required_paths = context_pack.unsatisfied_required_context_paths()
-        if self.llm and self.llm.available and not unsatisfied_required_paths:
+        llm_skip_reason = self._llm_context_skip_reason(context_pack)
+        context_safe_for_llm = not llm_skip_reason
+        if self.llm and self.llm.available and context_safe_for_llm:
             try:
                 return QAAnswer(
                     question=question,
@@ -75,6 +79,7 @@ class RepositoryQAAgent:
                     llm_user_prompt=user,
                     graph_context=graph_context,
                     used_llm=True,
+                    context_safe_for_llm=True,
                 )
             except LLMError as exc:
                 fallback = self._offline_answer(
@@ -94,8 +99,10 @@ class RepositoryQAAgent:
                     llm_user_prompt=user,
                     graph_context=graph_context,
                     used_llm=False,
+                    context_safe_for_llm=True,
+                    llm_skip_reason=f"LLM request failed: {exc}",
                 )
-        if self.llm and self.llm.available and unsatisfied_required_paths:
+        if self.llm and self.llm.available and not context_safe_for_llm:
             fallback = self._offline_answer(
                 question,
                 results,
@@ -103,8 +110,8 @@ class RepositoryQAAgent:
                 missing_required_paths=unsatisfied_required_paths,
             )
             fallback += (
-                "\n\nLLM request skipped because required files were missing or incomplete "
-                "in the prompt context. Increase --context-chars or narrow the question."
+                "\n\nLLM request skipped because the prompt context is not safe for code "
+                f"reasoning: {llm_skip_reason} Increase --context-chars or narrow the question."
             )
             return QAAnswer(
                 question=question,
@@ -116,6 +123,8 @@ class RepositoryQAAgent:
                 llm_user_prompt=user,
                 graph_context=graph_context,
                 used_llm=False,
+                context_safe_for_llm=False,
+                llm_skip_reason=llm_skip_reason,
             )
         return QAAnswer(
             question=question,
@@ -132,6 +141,8 @@ class RepositoryQAAgent:
             llm_user_prompt=user,
             graph_context=graph_context,
             used_llm=False,
+            context_safe_for_llm=context_safe_for_llm,
+            llm_skip_reason=llm_skip_reason,
         )
 
     def _offline_answer(
@@ -315,6 +326,22 @@ class RepositoryQAAgent:
             "call-chain structure, then verify with source blocks. If the source "
             "evidence is insufficient, say so. Cite file paths and line ranges."
         )
+
+    @staticmethod
+    def _llm_context_skip_reason(context_pack: RAGContextPack) -> str:
+        reasons: list[str] = []
+        unsatisfied_required = context_pack.unsatisfied_required_context_paths()
+        if unsatisfied_required:
+            reasons.append(
+                "required files are missing or incomplete in the prompt context: "
+                + ", ".join(unsatisfied_required)
+                + "."
+            )
+        if not context_pack.source_context_satisfied():
+            reasons.append("no real source file content was packed into the prompt context.")
+        if not context_pack.complete_file_context_satisfied():
+            reasons.append("no complete source file was packed into the prompt context.")
+        return " ".join(reasons)
 
     @classmethod
     def _llm_user_prompt(

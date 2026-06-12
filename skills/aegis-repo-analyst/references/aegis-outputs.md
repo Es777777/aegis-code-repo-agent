@@ -67,10 +67,16 @@ Ask JSON fields:
 - `qa.incomplete_required_context_paths`: required paths present only as partial source windows.
 - `qa.unsatisfied_required_context_paths`: required paths absent from prompt context or present only partially.
 - `qa.required_context_satisfied`: whether every required file is present as complete line-numbered source.
+- `qa.source_context_satisfied`: whether real source file content entered the prompt context.
+- `qa.complete_file_context_satisfied`: whether at least one complete source file entered the prompt context.
+- `qa.context_safe_for_llm`: whether it is safe to let an LLM answer from this prompt.
+- `qa.llm_skip_reason`: why AEGIS skipped a configured LLM when context was unsafe.
 - `qa.llm_prompt`: exact system/user prompt assembled for an OpenAI-compatible chat model.
 - `qa.context_pack.source_paths`: real source files included in the prompt context.
 - `qa.context_pack.complete_file_paths`: files included as complete line-numbered source.
 - `qa.context_pack.required_context_satisfied`: same contract at context-pack level.
+- `qa.context_pack.source_context_satisfied`: same source-content contract at context-pack level.
+- `qa.context_pack.complete_file_context_satisfied`: same complete-file contract at context-pack level.
 - `qa.context_pack.blocks[*].content`: line-numbered source code for the LLM.
 - `qa.context_pack.blocks[*].complete_file`: `true` when the block contains the whole file.
 - `qa.results[*].source_excerpt`: short evidence excerpts for display or citations.

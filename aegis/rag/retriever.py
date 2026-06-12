@@ -159,6 +159,8 @@ class RAGContextPack:
             "incomplete_required_context_paths": self.incomplete_required_context_paths(),
             "unsatisfied_required_context_paths": self.unsatisfied_required_context_paths(),
             "required_context_satisfied": not self.unsatisfied_required_context_paths(),
+            "source_context_satisfied": self.source_context_satisfied(),
+            "complete_file_context_satisfied": self.complete_file_context_satisfied(),
             "source_paths": self.source_paths(),
             "complete_file_paths": self.complete_file_paths(),
             "blocks": [block.to_dict() for block in self.blocks],
@@ -208,6 +210,12 @@ class RAGContextPack:
                 ]
             )
         )
+
+    def source_context_satisfied(self) -> bool:
+        return bool(self.source_paths())
+
+    def complete_file_context_satisfied(self) -> bool:
+        return bool(self.complete_file_paths())
 
 
 class RAGRetriever:

@@ -378,6 +378,10 @@ retrieval summaries. Each context block contains:
 - `incomplete_required_context_paths`: required files present only as partial source windows
 - `unsatisfied_required_context_paths`: required files that are missing or incomplete
 - `required_context_satisfied`: `false` when required files are missing or incomplete
+- `source_context_satisfied`: `true` only when real source file content entered the prompt context
+- `complete_file_context_satisfied`: `true` only when at least one whole source file entered the prompt context
+- `context_safe_for_llm`: `true` only when the prompt has real source context, a complete file, and all required files
+- `llm_skip_reason`: why AEGIS refused to call the LLM when the prompt context is unsafe
 - `llm_prompt`: the exact system/user prompt assembled for the LLM
 - the original retrieved chunk id and matched terms
 - a configurable character budget
@@ -420,6 +424,9 @@ that question. This prevents a model from answering about files that were only
 retrieved by name or only partially packed into prompt context. Increase
 `--context-chars` or narrow the question until required files appear in
 `complete_file_paths`.
+AEGIS also skips `--ask --llm` when retrieval produced only metadata chunks, or
+when the context budget allowed source windows but no complete file. In those
+cases `context_safe_for_llm=false` and `llm_skip_reason` explains what to fix.
 
 ## Change Impact Analysis
 

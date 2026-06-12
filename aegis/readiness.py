@@ -261,12 +261,18 @@ class ReadinessAssessor:
         incomplete_required = self.qa_payload.get("incomplete_required_context_paths", [])
         unsatisfied_required = self.qa_payload.get("unsatisfied_required_context_paths", [])
         satisfied = bool(self.qa_payload.get("required_context_satisfied"))
+        source_context_satisfied = bool(self.qa_payload.get("source_context_satisfied"))
+        complete_file_context_satisfied = bool(self.qa_payload.get("complete_file_context_satisfied"))
+        context_safe_for_llm = bool(self.qa_payload.get("context_safe_for_llm"))
         ok = (
             not missing_artifacts
             and bool(blocks)
             and bool(source_paths)
             and bool(complete_file_paths)
             and satisfied
+            and source_context_satisfied
+            and complete_file_context_satisfied
+            and context_safe_for_llm
             and not missing_required
             and not incomplete_required
             and not unsatisfied_required
@@ -285,7 +291,11 @@ class ReadinessAssessor:
                 "missing_artifacts": missing_artifacts,
                 "source_paths": source_paths,
                 "complete_file_paths": complete_file_paths,
+                "context_safe_for_llm": context_safe_for_llm,
+                "llm_skip_reason": self.qa_payload.get("llm_skip_reason"),
                 "required_context_satisfied": satisfied,
+                "source_context_satisfied": source_context_satisfied,
+                "complete_file_context_satisfied": complete_file_context_satisfied,
                 "missing_required_context_paths": missing_required,
                 "incomplete_required_context_paths": incomplete_required,
                 "unsatisfied_required_context_paths": unsatisfied_required,

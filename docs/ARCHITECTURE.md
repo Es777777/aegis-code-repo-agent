@@ -241,6 +241,10 @@ Context pack fields:
 - `required_context_paths`, paths that must be represented in source context
 - `missing_required_context_paths`, required paths absent from source context
 - `required_context_satisfied`, `false` when the prompt is not safe for LLM use
+- `source_context_satisfied`, `true` only when real source file content is present
+- `complete_file_context_satisfied`, `true` only when at least one complete file is present
+- `context_safe_for_llm`, `true` only when the QA prompt is safe to send to an LLM
+- `llm_skip_reason`, the reason a configured LLM was not called
 
 For route questions, `RepositoryQAAgent` also emits `qa.graph_context` from
 `CodeGraphQuery.trace_interface(route)`. Paths from that trace are passed to
@@ -254,6 +258,9 @@ into the context pack before ordinary retrieval candidates are considered.
 If any required path is still missing because the context budget is too small,
 the QA agent skips the LLM call and returns an offline diagnostic that asks the
 caller to increase `--context-chars` or narrow the question.
+The QA agent also skips `--ask --llm` if retrieval produced only repository or
+symbol metadata, or if the budget allowed partial source windows but no complete
+file. This keeps LLM answers tied to actual file contents instead of summaries.
 
 CLI and skill entrypoints expose the budget through `--context-chars`; `.env`
 uses `AEGIS_RAG_CONTEXT_CHARS` and defaults to `48000` so agent prompts can

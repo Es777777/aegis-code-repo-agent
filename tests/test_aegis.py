@@ -24,7 +24,7 @@ from aegis.knowledge.parsers import extract_interfaces
 from aegis.llm import LLMClient, LLMError
 from aegis.orchestrator.context import ContextRouter
 from aegis.orchestrator.workflow import AegisWorkflow
-from aegis.rag.index import RAGIndexBuilder
+from aegis.rag.index import RAGIndex, RAGIndexBuilder
 from aegis.rag.qa import RepositoryQAAgent
 from aegis.rag.retriever import RAGRetriever
 
@@ -470,6 +470,60 @@ class RAGRecallTest(unittest.TestCase):
         self.assertFalse(answer.used_llm)
         self.assertEqual(answer.context_pack.incomplete_required_context_paths(), ["large_module.py"])
         self.assertIn("Required context missing or incomplete", answer.answer)
+        self.assertIn("LLM request skipped", answer.answer)
+
+    def test_qa_agent_skips_llm_when_no_source_files_reach_context(self) -> None:
+        class FailingLLM:
+            @property
+            def available(self) -> bool:
+                return True
+
+            def complete(self, *, system: str, user: str) -> str:
+                raise AssertionError("LLM must not be called without source file context")
+
+        knowledge = KnowledgeBuilder(SAMPLE, max_files=100, use_cache=False).build()
+        full_index = RAGIndexBuilder(knowledge).build()
+        metadata_only_index = RAGIndex(
+            repo_name=full_index.repo_name,
+            chunks=[chunk for chunk in full_index.chunks if chunk.kind != "source"],
+            stats=full_index.stats,
+        )
+        answer = RepositoryQAAgent(knowledge, metadata_only_index, llm=FailingLLM()).answer(
+            "explain POST /users",
+            top_k=3,
+            max_context_chars=8000,
+        )
+        self.assertFalse(answer.used_llm)
+        self.assertFalse(answer.context_safe_for_llm)
+        self.assertIn("no real source file content", answer.llm_skip_reason)
+        self.assertFalse(answer.context_pack.source_context_satisfied())
+        self.assertIn("LLM request skipped", answer.answer)
+
+    def test_qa_agent_skips_llm_when_only_partial_source_reaches_context(self) -> None:
+        class FailingLLM:
+            @property
+            def available(self) -> bool:
+                return True
+
+            def complete(self, *, system: str, user: str) -> str:
+                raise AssertionError("LLM must not be called without a complete source file")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lines = [f"def fn_{idx}(): return '{idx}' * 40" for idx in range(80)]
+            (root / "large_module.py").write_text("\n".join(lines), encoding="utf-8")
+            knowledge = KnowledgeBuilder(root, max_files=10, use_cache=False).build()
+            index = RAGIndexBuilder(knowledge).build()
+            answer = RepositoryQAAgent(knowledge, index, llm=FailingLLM()).answer(
+                "what does fn_20 return",
+                top_k=1,
+                max_context_chars=700,
+            )
+        self.assertFalse(answer.used_llm)
+        self.assertFalse(answer.context_safe_for_llm)
+        self.assertTrue(answer.context_pack.source_context_satisfied())
+        self.assertFalse(answer.context_pack.complete_file_context_satisfied())
+        self.assertIn("no complete source file", answer.llm_skip_reason)
         self.assertIn("LLM request skipped", answer.answer)
 
     def test_offline_qa_prints_source_context(self) -> None:
