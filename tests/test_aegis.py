@@ -1161,6 +1161,9 @@ class PackagingTest(unittest.TestCase):
         self.assertIn("primary_task.recommended_command_line", readme)
         self.assertIn("docs/DEMO.md", readme)
         self.assertIn("docs/RELEASE_CHECKLIST.md", readme)
+        self.assertIn("## Quick Links", readme)
+        self.assertIn("## Demo In 3 Commands", readme)
+        self.assertIn("actions/workflows/ci.yml/badge.svg", readme)
 
     def test_demo_and_release_docs_exist(self) -> None:
         demo = (ROOT / "docs" / "DEMO.md").read_text(encoding="utf-8")
